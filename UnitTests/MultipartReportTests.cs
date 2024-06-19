@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,11 +24,8 @@
 // THE SOFTWARE.
 //
 
-using System;
-
-using NUnit.Framework;
-
 using MimeKit;
+using MimeKit.Text;
 
 namespace UnitTests {
 	[TestFixture]
@@ -41,7 +38,7 @@ namespace UnitTests {
 
 			Assert.Throws<ArgumentNullException> (() => new MultipartReport ((MimeEntityConstructorArgs) null));
 			Assert.Throws<ArgumentNullException> (() => new MultipartReport ((string) null));
-			Assert.Throws<ArgumentNullException> (() => new MultipartReport (null, new object[0]));
+			Assert.Throws<ArgumentNullException> (() => new MultipartReport (null, Array.Empty<object> ()));
 			Assert.Throws<ArgumentNullException> (() => new MultipartReport ("disposition-notification", null));
 
 			Assert.Throws<ArgumentNullException> (() => report.ReportType = null);
@@ -50,12 +47,19 @@ namespace UnitTests {
 		}
 
 		[Test]
-		public void TestParamCtor ()
+		public void TestGenericArgsConstructor ()
 		{
-			var report = new MultipartReport ("disposition-notification", new MimePart ());
+			var multipart = new MultipartReport ("disposition-notification",
+				new Header (HeaderId.ContentDescription, "This is a description of the multipart."),
+				new TextPart (TextFormat.Plain) { Text = "This is the message body." },
+				new MimePart ("image", "gif") { FileName = "attachment.gif" }
+				);
 
-			Assert.AreEqual (1, report.Count);
+			Assert.That (multipart.ReportType, Is.EqualTo ("disposition-notification"), "ReportType");
+			Assert.That (multipart.Headers.Contains (HeaderId.ContentDescription), Is.True, "Content-Description header");
+			Assert.That (multipart.Count, Is.EqualTo (2), "Child part count");
+			Assert.That (multipart[0].ContentType.MimeType, Is.EqualTo ("text/plain"), "MimeType[0]");
+			Assert.That (multipart[1].ContentType.MimeType, Is.EqualTo ("image/gif"), "MimeType[1]");
 		}
 	}
 }
-

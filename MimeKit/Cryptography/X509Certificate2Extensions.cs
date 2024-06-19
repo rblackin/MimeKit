@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 Xamarin Inc. (www.xamarin.com)
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -28,15 +28,17 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 
 using Org.BouncyCastle.X509;
 using Org.BouncyCastle.Asn1;
+using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Asn1.X509;
 
+using X509Certificate = Org.BouncyCastle.X509.X509Certificate;
 using X509Certificate2 = System.Security.Cryptography.X509Certificates.X509Certificate2;
 
-namespace MimeKit.Cryptography
-{
+namespace MimeKit.Cryptography {
 	/// <summary>
 	/// Extension methods for X509Certificate2.
 	/// </summary>
@@ -64,6 +66,9 @@ namespace MimeKit.Cryptography
 			var rawData = certificate.GetRawCertData ();
 			var parser = new X509CertificateParser ();
 			var cert = parser.ReadCertificate (rawData);
+
+			if (cert == null)
+				throw new ArgumentException ("Cannot convert X509Certificate2 to a BouncyCastle X509Certificate.", nameof (certificate));
 
 			return cert;
 		}
@@ -100,17 +105,15 @@ namespace MimeKit.Cryptography
 		{
 			using (var memory = new MemoryStream (rawData, false)) {
 				using (var asn1 = new Asn1InputStream (memory)) {
-					var algorithms = new List<EncryptionAlgorithm> ();
-					var sequence = asn1.ReadObject () as Asn1Sequence;
-
-					if (sequence == null)
+					if (asn1.ReadObject () is not Asn1Sequence sequence)
 						return null;
+
+					var algorithms = new List<EncryptionAlgorithm> ();
 
 					for (int i = 0; i < sequence.Count; i++) {
 						var identifier = AlgorithmIdentifier.GetInstance (sequence[i]);
-						EncryptionAlgorithm algorithm;
 
-						if (BouncyCastleSecureMimeContext.TryGetEncryptionAlgorithm (identifier, out algorithm))
+						if (BouncyCastleSecureMimeContext.TryGetEncryptionAlgorithm (identifier, out var algorithm))
 							algorithms.Add (algorithm);
 					}
 
@@ -150,6 +153,46 @@ namespace MimeKit.Cryptography
 			}
 
 			return new EncryptionAlgorithm[] { EncryptionAlgorithm.TripleDes };
+		}
+
+		/// <summary>
+		/// Get the PrivateKey property as a BouncyCastle AsymmetricKeyParameter.
+		/// </summary>
+		/// <remarks>
+		/// Gets the PrivateKey property as a BouncyCastle AsymmetricKeyParameter.
+		/// </remarks>
+		/// <returns>The asymmetric key parameter.</returns>
+		/// <param name="certificate">The X.509 certificate.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="certificate"/> is <c>null</c>.
+		/// </exception>
+		public static AsymmetricKeyParameter GetPrivateKeyAsAsymmetricKeyParameter (this X509Certificate2 certificate)
+		{
+			if (certificate == null)
+				throw new ArgumentNullException (nameof (certificate));
+
+#if NET6_0_OR_GREATER
+			AsymmetricAlgorithm privateKey = null;
+
+			if (certificate.HasPrivateKey) {
+				switch (GetPublicKeyAlgorithm (certificate)) {
+				case PublicKeyAlgorithm.Dsa:
+					privateKey = certificate.GetDSAPrivateKey ();
+					break;
+				case PublicKeyAlgorithm.RsaGeneral:
+					privateKey = certificate.GetRSAPrivateKey ();
+					break;
+				case PublicKeyAlgorithm.EllipticCurve:
+					//privateKey = certificate.GetECDsaPrivateKey ();
+					privateKey = certificate.GetECDiffieHellmanPrivateKey ();
+					break;
+				}
+			}
+
+			return privateKey?.AsAsymmetricKeyParameter ();
+#else
+			return certificate.PrivateKey?.AsAsymmetricKeyParameter ();
+#endif
 		}
 	}
 }

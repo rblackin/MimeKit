@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,16 +24,12 @@
 // THE SOFTWARE.
 //
 
-using System;
 using System.Text;
 using System.Globalization;
-using System.Collections.Generic;
-
-using NUnit.Framework;
 
 using MimeKit;
-using MimeKit.Cryptography;
 using MimeKit.Utils;
+using MimeKit.Cryptography;
 
 namespace UnitTests {
 	[TestFixture]
@@ -52,15 +48,10 @@ namespace UnitTests {
 			Assert.Throws<ArgumentNullException> (() => new MailboxAddress ("name", null, "johnny@example.com"));
 			Assert.Throws<ArgumentNullException> (() => new MailboxAddress ("name", route, null));
 
-			Assert.Throws<ArgumentNullException> (() => new MailboxAddress ((IEnumerable<string>) null, "johnny@example.com"));
-			Assert.Throws<ArgumentNullException> (() => new MailboxAddress (route, null));
-
 			Assert.Throws<ArgumentNullException> (() => new MailboxAddress (null, "name", "johnny@example.com"));
 			Assert.Throws<ArgumentNullException> (() => new MailboxAddress (Encoding.UTF8, "name", null));
 
 			Assert.Throws<ArgumentNullException> (() => new MailboxAddress ("name", null));
-
-			Assert.Throws<ArgumentNullException> (() => new MailboxAddress (null));
 
 			Assert.Throws<ArgumentNullException> (() => mailbox.Address = null);
 
@@ -85,11 +76,6 @@ namespace UnitTests {
 			Assert.Throws<ArgumentNullException> (() => new SecureMailboxAddress ("name", route, "johnny@example.com", null));
 			Assert.Throws<ArgumentException> (() => new SecureMailboxAddress ("name", route, "johnny@example.com", "not hex encoded"));
 
-			Assert.Throws<ArgumentNullException> (() => new SecureMailboxAddress ((IEnumerable<string>) null, "johnny@example.com", "ffff"));
-			Assert.Throws<ArgumentNullException> (() => new SecureMailboxAddress (route, null, "ffff"));
-			Assert.Throws<ArgumentNullException> (() => new SecureMailboxAddress (route, "johnny@example.com", null));
-			Assert.Throws<ArgumentException> (() => new SecureMailboxAddress (route, "johnny@example.com", "not hex encoded"));
-
 			Assert.Throws<ArgumentNullException> (() => new SecureMailboxAddress (null, "name", "johnny@example.com", "ffff"));
 			Assert.Throws<ArgumentNullException> (() => new SecureMailboxAddress (Encoding.UTF8, "name", null, "ffff"));
 			Assert.Throws<ArgumentNullException> (() => new SecureMailboxAddress (Encoding.UTF8, "name", "johnny@example.com", null));
@@ -99,37 +85,78 @@ namespace UnitTests {
 			Assert.Throws<ArgumentNullException> (() => new SecureMailboxAddress ("name", "johnny@example.com", null));
 			Assert.Throws<ArgumentException> (() => new SecureMailboxAddress ("name", "johnny@example.com", "not hex encoded"));
 
-			Assert.Throws<ArgumentNullException> (() => new SecureMailboxAddress (null, "ffff"));
-			Assert.Throws<ArgumentNullException> (() => new SecureMailboxAddress ("johnny@example.com", null));
-			Assert.Throws<ArgumentException> (() => new SecureMailboxAddress ("johnny@example.com", "not hex encoded"));
-
-			Assert.DoesNotThrow (() => new SecureMailboxAddress ("user@domain.com", "ffff"));
 			Assert.DoesNotThrow (() => new SecureMailboxAddress ("Mailbox Address", "user@domain.com", "ffff"));
 			Assert.DoesNotThrow (() => new SecureMailboxAddress (Encoding.UTF8, "Mailbox Address", "user@domain.com", "ffff"));
-			Assert.DoesNotThrow (() => new SecureMailboxAddress (new[] { "route1", "route2", "route3" }, "user@domain.com", "ffff"));
 			Assert.DoesNotThrow (() => new SecureMailboxAddress ("Routed Address", new[] { "route1", "route2", "route3" }, "user@domain.com", "ffff"));
 			Assert.DoesNotThrow (() => new SecureMailboxAddress (Encoding.UTF8, "Routed Address", new[] { "route1", "route2", "route3" }, "user@domain.com", "ffff"));
 		}
 
+		[Test]
+		public void TestLocalPartAndDomain ()
+		{
+			var mailbox = new MailboxAddress ("User Name", "user@domain.com");
+
+			Assert.That (mailbox.LocalPart, Is.EqualTo ("user"), "LocalPart");
+			Assert.That (mailbox.Domain, Is.EqualTo ("domain.com"), "Domain");
+
+			mailbox = new MailboxAddress ("User Name", "user");
+
+			Assert.That (mailbox.LocalPart, Is.EqualTo ("user"), "Unix LocalPart");
+			Assert.That (mailbox.Domain, Is.EqualTo (string.Empty), "Unix non-Domain");
+		}
+
+		[Test]
+		public void TestSetEmptyAddress ()
+		{
+			Assert.DoesNotThrow(() => new MailboxAddress ("Postmaster", string.Empty));
+
+			var mailbox = new MailboxAddress ("Postmaster", string.Empty);
+
+			Assert.That (mailbox.IsInternational, Is.False, "IsInternational");
+		}
+
+		[Test]
+		public void TestGarbageAfterAddress ()
+		{
+			try {
+				new MailboxAddress ("Name", "fejj@helixcode.com garbage");
+				Assert.Fail ("Expected a ParseException");
+			} catch (ParseException ex) {
+				Assert.That (ex.TokenIndex, Is.EqualTo (19), "TokenIndex");
+				Assert.That (ex.ErrorIndex, Is.EqualTo (19), "ErrorIndex");
+			} catch (Exception ex) {
+				Assert.Fail ($"Unexpected exception: {ex}");
+			}
+		}
+
+		[Test]
+		public void TestCastToMailAddress ()
+		{
+			var mailbox = new MailboxAddress (CharsetUtils.Latin1, "æøå", "user@example.com");
+			var address = (System.Net.Mail.MailAddress) mailbox;
+
+			Assert.That (address.Address, Is.EqualTo (mailbox.Address), "Address");
+			Assert.That (address.DisplayName, Is.EqualTo (mailbox.Name), "DisplayName");
+		}
+
 		static void AssertParseFailure (string text, bool result, int tokenIndex, int errorIndex, RfcComplianceMode mode = RfcComplianceMode.Loose)
 		{
-			var buffer = text.Length > 0 ? Encoding.ASCII.GetBytes (text) : new byte[1];
+			var buffer = text.Length > 0 ? Encoding.UTF8.GetBytes (text) : new byte[1];
 			var options = ParserOptions.Default.Clone ();
-			MailboxAddress mailbox;
 
 			options.AddressParserComplianceMode = mode;
 
-			Assert.AreEqual (result, MailboxAddress.TryParse (options, text, out mailbox), "MailboxAddress.TryParse(string)");
-			Assert.AreEqual (result, MailboxAddress.TryParse (options, buffer, out mailbox), "MailboxAddress.TryParse(byte[])");
-			Assert.AreEqual (result, MailboxAddress.TryParse (options, buffer, 0, out mailbox), "MailboxAddress.TryParse(byte[], int)");
-			Assert.AreEqual (result, MailboxAddress.TryParse (options, buffer, 0, buffer.Length, out mailbox), "MailboxAddress.TryParse(byte[], int, int)");
+			Assert.That (MailboxAddress.TryParse (options, text, out _), Is.EqualTo (result), "MailboxAddress.TryParse(string)");
+			Assert.That (MailboxAddress.TryParse (options, buffer, out _), Is.EqualTo (result), "MailboxAddress.TryParse(byte[])");
+			Assert.That (MailboxAddress.TryParse (options, buffer, 0, out _), Is.EqualTo (result), "MailboxAddress.TryParse(byte[], int)");
+			Assert.That (MailboxAddress.TryParse (options, buffer, 0, buffer.Length, out _), Is.EqualTo (result), "MailboxAddress.TryParse(byte[], int, int)");
 
 			try {
 				MailboxAddress.Parse (options, text);
 				Assert.Fail ("MailboxAddress.Parse(string) should fail.");
 			} catch (ParseException ex) {
-				Assert.AreEqual (tokenIndex, ex.TokenIndex, "ParseException did not have the correct token index.");
-				Assert.AreEqual (errorIndex, ex.ErrorIndex, "ParseException did not have the correct error index.");
+				Assert.That (ex.TokenIndex, Is.EqualTo (tokenIndex), "ParseException did not have the correct token index.");
+				Assert.That (ex.ErrorIndex, Is.EqualTo (errorIndex), "ParseException did not have the correct error index.");
 			} catch {
 				Assert.Fail ("MailboxAddress.Parse(string) should throw ParseException.");
 			}
@@ -138,8 +165,8 @@ namespace UnitTests {
 				MailboxAddress.Parse (options, buffer);
 				Assert.Fail ("MailboxAddress.Parse(byte[]) should fail.");
 			} catch (ParseException ex) {
-				Assert.AreEqual (tokenIndex, ex.TokenIndex, "ParseException did not have the correct token index.");
-				Assert.AreEqual (errorIndex, ex.ErrorIndex, "ParseException did not have the correct error index.");
+				Assert.That (ex.TokenIndex, Is.EqualTo (tokenIndex), "ParseException did not have the correct token index.");
+				Assert.That (ex.ErrorIndex, Is.EqualTo (errorIndex), "ParseException did not have the correct error index.");
 			} catch {
 				Assert.Fail ("MailboxAddress.Parse(new byte[]) should throw ParseException.");
 			}
@@ -148,8 +175,8 @@ namespace UnitTests {
 				MailboxAddress.Parse (options, buffer, 0);
 				Assert.Fail ("MailboxAddress.Parse(byte[], int) should fail.");
 			} catch (ParseException ex) {
-				Assert.AreEqual (tokenIndex, ex.TokenIndex, "ParseException did not have the correct token index.");
-				Assert.AreEqual (errorIndex, ex.ErrorIndex, "ParseException did not have the correct error index.");
+				Assert.That (ex.TokenIndex, Is.EqualTo (tokenIndex), "ParseException did not have the correct token index.");
+				Assert.That (ex.ErrorIndex, Is.EqualTo (errorIndex), "ParseException did not have the correct error index.");
 			} catch {
 				Assert.Fail ("MailboxAddress.Parse(new byte[], int) should throw ParseException.");
 			}
@@ -158,8 +185,8 @@ namespace UnitTests {
 				MailboxAddress.Parse (options, buffer, 0, buffer.Length);
 				Assert.Fail ("MailboxAddress.Parse(byte[], int, int) should fail.");
 			} catch (ParseException ex) {
-				Assert.AreEqual (tokenIndex, ex.TokenIndex, "ParseException did not have the correct token index.");
-				Assert.AreEqual (errorIndex, ex.ErrorIndex, "ParseException did not have the correct error index.");
+				Assert.That (ex.TokenIndex, Is.EqualTo (tokenIndex), "ParseException did not have the correct token index.");
+				Assert.That (ex.ErrorIndex, Is.EqualTo (errorIndex), "ParseException did not have the correct error index.");
 			} catch {
 				Assert.Fail ("MailboxAddress.Parse(new byte[], int, int) should throw ParseException.");
 			}
@@ -167,55 +194,112 @@ namespace UnitTests {
 
 		static void AssertParse (string text)
 		{
-			var buffer = Encoding.ASCII.GetBytes (text);
+			var buffer = Encoding.UTF8.GetBytes (text);
 			MailboxAddress mailbox;
 
 			try {
-				Assert.IsTrue (MailboxAddress.TryParse (text, out mailbox), "MailboxAddress.TryParse(string) should succeed.");
+				Assert.That (MailboxAddress.TryParse (text, out mailbox), Is.True, "MailboxAddress.TryParse(string) should succeed.");
 			} catch (Exception ex) {
-				Assert.Fail ("MailboxAddress.TryParse(string) should not throw an exception: {0}", ex);
+				Assert.Fail ($"MailboxAddress.TryParse(string) should not throw an exception: {ex}");
 			}
 
 			try {
-				Assert.IsTrue (MailboxAddress.TryParse (buffer, out mailbox), "MailboxAddress.TryParse(byte[]) should succeed.");
+				Assert.That (MailboxAddress.TryParse (buffer, out mailbox), Is.True, "MailboxAddress.TryParse(byte[]) should succeed.");
 			} catch (Exception ex) {
-				Assert.Fail ("MailboxAddress.TryParse(byte[]) should not throw an exception: {0}", ex);
+				Assert.Fail ($"MailboxAddress.TryParse(byte[]) should not throw an exception: {ex}");
 			}
 
 			try {
-				Assert.IsTrue (MailboxAddress.TryParse (buffer, 0, out mailbox), "MailboxAddress.TryParse(byte[], int) should succeed.");
+				Assert.That (MailboxAddress.TryParse (buffer, 0, out mailbox), Is.True, "MailboxAddress.TryParse(byte[], int) should succeed.");
 			} catch (Exception ex) {
-				Assert.Fail ("MailboxAddress.TryParse(byte[], int) should not throw an exception: {0}", ex);
+				Assert.Fail ($"MailboxAddress.TryParse(byte[], int) should not throw an exception: {ex}");
 			}
 
 			try {
-				Assert.IsTrue (MailboxAddress.TryParse (buffer, 0, buffer.Length, out mailbox), "MailboxAddress.TryParse(byte[], int, int) should succeed.");
+				Assert.That (MailboxAddress.TryParse (buffer, 0, buffer.Length, out mailbox), Is.True, "MailboxAddress.TryParse(byte[], int, int) should succeed.");
 			} catch (Exception ex) {
-				Assert.Fail ("MailboxAddress.TryParse(byte[], int, int) should not throw an exception: {0}", ex);
+				Assert.Fail ($"MailboxAddress.TryParse(byte[], int, int) should not throw an exception: {ex}");
 			}
 
 			try {
 				mailbox = MailboxAddress.Parse (text);
 			} catch (Exception ex) {
-				Assert.Fail ("MailboxAddress.Parse(string) should not throw an exception: {0}", ex);
+				Assert.Fail ($"MailboxAddress.Parse(string) should not throw an exception: {ex}");
 			}
 
 			try {
 				mailbox = MailboxAddress.Parse (buffer);
 			} catch (Exception ex) {
-				Assert.Fail ("MailboxAddress.Parse(string) should not throw an exception: {0}", ex);
+				Assert.Fail ($"MailboxAddress.Parse(string) should not throw an exception: {ex}");
 			}
 
 			try {
 				mailbox = MailboxAddress.Parse (buffer, 0);
 			} catch (Exception ex) {
-				Assert.Fail ("MailboxAddress.Parse(string) should not throw an exception: {0}", ex);
+				Assert.Fail ($"MailboxAddress.Parse(string) should not throw an exception: {ex}");
 			}
 
 			try {
 				mailbox = MailboxAddress.Parse (buffer, 0, buffer.Length);
 			} catch (Exception ex) {
-				Assert.Fail ("MailboxAddress.Parse(string) should not throw an exception: {0}", ex);
+				Assert.Fail ($"MailboxAddress.Parse(string) should not throw an exception: {ex}");
+			}
+		}
+
+		static void AssertParse (string text, RfcComplianceMode mode)
+		{
+			var buffer = Encoding.UTF8.GetBytes (text);
+			var options = ParserOptions.Default.Clone ();
+			MailboxAddress mailbox;
+
+			options.AddressParserComplianceMode = mode;
+
+			try {
+				Assert.That (MailboxAddress.TryParse (options, text, out mailbox), Is.True, "MailboxAddress.TryParse(ParserOptions, string) should succeed.");
+			} catch (Exception ex) {
+				Assert.Fail ($"MailboxAddress.TryParse(ParserOptions, string) should not throw an exception: {ex}");
+			}
+
+			try {
+				Assert.That (MailboxAddress.TryParse (options, buffer, out mailbox), Is.True, "MailboxAddress.TryParse(ParserOptions, byte[]) should succeed.");
+			} catch (Exception ex) {
+				Assert.Fail ($"MailboxAddress.TryParse(ParserOptions, byte[]) should not throw an exception: {ex}");
+			}
+
+			try {
+				Assert.That (MailboxAddress.TryParse (options, buffer, 0, out mailbox), Is.True, "MailboxAddress.TryParse(ParserOptions, byte[], int) should succeed.");
+			} catch (Exception ex) {
+				Assert.Fail ($"MailboxAddress.TryParse(ParserOptions, byte[], int) should not throw an exception: {ex}");
+			}
+
+			try {
+				Assert.That (MailboxAddress.TryParse (options, buffer, 0, buffer.Length, out mailbox), Is.True, "MailboxAddress.TryParse(ParserOptions, byte[], int, int) should succeed.");
+			} catch (Exception ex) {
+				Assert.Fail ($"MailboxAddress.TryParse(ParserOptions, byte[], int, int) should not throw an exception: {ex}");
+			}
+
+			try {
+				mailbox = MailboxAddress.Parse (options, text);
+			} catch (Exception ex) {
+				Assert.Fail ($"MailboxAddress.Parse(ParserOptions, string) should not throw an exception: {ex}");
+			}
+
+			try {
+				mailbox = MailboxAddress.Parse (options, buffer);
+			} catch (Exception ex) {
+				Assert.Fail ($"MailboxAddress.Parse(ParserOptions, string) should not throw an exception: {ex}");
+			}
+
+			try {
+				mailbox = MailboxAddress.Parse (options, buffer, 0);
+			} catch (Exception ex) {
+				Assert.Fail ($"MailboxAddress.Parse(ParserOptions, string) should not throw an exception: {ex}");
+			}
+
+			try {
+				mailbox = MailboxAddress.Parse (options, buffer, 0, buffer.Length);
+			} catch (Exception ex) {
+				Assert.Fail ($"MailboxAddress.Parse(ParserOptions, string) should not throw an exception: {ex}");
 			}
 		}
 
@@ -390,8 +474,8 @@ namespace UnitTests {
 			const string expected = "user@名がドメイン.com";
 			MailboxAddress mailbox;
 
-			Assert.IsTrue (MailboxAddress.TryParse (encoded, out mailbox));
-			Assert.AreEqual (expected, mailbox.Address);
+			Assert.That (MailboxAddress.TryParse (encoded, out mailbox), Is.True);
+			Assert.That (mailbox.Address, Is.EqualTo (expected));
 		}
 
 		[Test]
@@ -432,8 +516,8 @@ namespace UnitTests {
 
 			var mailbox = MailboxAddress.Parse (text);
 
-			Assert.AreEqual ("Jeffrey Stedfast", mailbox.Name);
-			Assert.AreEqual ("jeff", mailbox.Address);
+			Assert.That (mailbox.Name, Is.EqualTo ("Jeffrey Stedfast"));
+			Assert.That (mailbox.Address, Is.EqualTo ("jeff"));
 		}
 
 		[Test]
@@ -470,7 +554,7 @@ namespace UnitTests {
 
 			// default options should parse this as a single mailbox address
 			mailbox = MailboxAddress.Parse (text);
-			Assert.AreEqual ("Worthington, Warren", mailbox.Name);
+			Assert.That (mailbox.Name, Is.EqualTo ("Worthington, Warren"));
 
 			// this should fail when we allow mailbox addresses w/o a domain
 			var options = ParserOptions.Default.Clone ();
@@ -479,12 +563,12 @@ namespace UnitTests {
 
 			try {
 				mailbox = MailboxAddress.Parse (options, text);
-				Assert.Fail ("Should not have parsed \"{0}\" with AllowUnquotedCommasInAddresses = false", text);
+				Assert.Fail ($"Should not have parsed \"{text}\" with AllowUnquotedCommasInAddresses = false");
 			} catch (ParseException pex) {
-				Assert.AreEqual (0, pex.TokenIndex, "TokenIndex");
-				Assert.AreEqual (text.IndexOf (','), pex.ErrorIndex, "ErrorIndex");
+				Assert.That (pex.TokenIndex, Is.EqualTo (0), "TokenIndex");
+				Assert.That (pex.ErrorIndex, Is.EqualTo (text.IndexOf (',')), "ErrorIndex");
 			} catch (Exception ex) {
-				Assert.Fail ("Should not have thrown {0}", ex.GetType ().Name);
+				Assert.Fail ($"Should not have thrown {ex.GetType ().Name}");
 			}
 		}
 
@@ -571,28 +655,24 @@ namespace UnitTests {
 			MailboxAddress mailbox;
 
 			mailbox = new MailboxAddress ("Unit Test", "點看@domain.com");
-			Assert.AreEqual ("點看@domain.com", mailbox.GetAddress (false), "IDN-decode #1");
-			Assert.AreEqual (idn.GetAscii ("點看") + "@domain.com", mailbox.GetAddress (true), "IDN-encode #1");
-
-			mailbox = new MailboxAddress ("Unit Test", idn.GetAscii ("點看") + "@domain.com");
-			Assert.AreEqual ("點看@domain.com", mailbox.GetAddress (false), "IDN-decode #2");
-			Assert.AreEqual (idn.GetAscii ("點看") + "@domain.com", mailbox.GetAddress (true), "IDN-encode #2");
+			Assert.That (mailbox.GetAddress (false), Is.EqualTo ("點看@domain.com"), "IDN-decode #1");
+			Assert.That (mailbox.GetAddress (true), Is.EqualTo ("點看@domain.com"), "IDN-encode #1");
 
 			mailbox = new MailboxAddress ("Unit Test", "user@名がドメイン.com");
-			Assert.AreEqual ("user@名がドメイン.com", mailbox.GetAddress (false), "IDN-decode #3");
-			Assert.AreEqual ("user@" + idn.GetAscii ("名がドメイン.com"), mailbox.GetAddress (true), "IDN-encode #3");
+			Assert.That (mailbox.GetAddress (false), Is.EqualTo ("user@名がドメイン.com"), "IDN-decode #2");
+			Assert.That (mailbox.GetAddress (true), Is.EqualTo ("user@" + idn.GetAscii ("名がドメイン.com")), "IDN-encode #2");
 
 			mailbox = new MailboxAddress ("Unit Test", "user@" + idn.GetAscii ("名がドメイン.com"));
-			Assert.AreEqual ("user@名がドメイン.com", mailbox.GetAddress (false), "IDN-decode #4");
-			Assert.AreEqual ("user@" + idn.GetAscii ("名がドメイン.com"), mailbox.GetAddress (true), "IDN-encode #4");
+			Assert.That (mailbox.GetAddress (false), Is.EqualTo ("user@名がドメイン.com"), "IDN-decode #3");
+			Assert.That (mailbox.GetAddress (true), Is.EqualTo ("user@" + idn.GetAscii ("名がドメイン.com")), "IDN-encode #3");
 
 			mailbox = new MailboxAddress ("Unit Test", "點看@名がドメイン.com");
-			Assert.AreEqual ("點看@名がドメイン.com", mailbox.GetAddress (false), "IDN-decode #5");
-			Assert.AreEqual (idn.GetAscii ("點看") + "@" + idn.GetAscii ("名がドメイン.com"), mailbox.GetAddress (true), "IDN-encode #5");
+			Assert.That (mailbox.GetAddress (false), Is.EqualTo ("點看@名がドメイン.com"), "IDN-decode #4");
+			Assert.That (mailbox.GetAddress (true), Is.EqualTo ("點看@" + idn.GetAscii ("名がドメイン.com")), "IDN-encode #4");
 
-			mailbox = new MailboxAddress ("Unit Test", idn.GetAscii ("點看") + "@" + idn.GetAscii ("名がドメイン.com"));
-			Assert.AreEqual ("點看@名がドメイン.com", mailbox.GetAddress (false), "IDN-decode #6");
-			Assert.AreEqual (idn.GetAscii ("點看") + "@" + idn.GetAscii ("名がドメイン.com"), mailbox.GetAddress (true), "IDN-encode #6");
+			mailbox = new MailboxAddress ("Unit Test", "點看@" + idn.GetAscii ("名がドメイン.com"));
+			Assert.That (mailbox.GetAddress (false), Is.EqualTo ("點看@名がドメイン.com"), "IDN-decode #5");
+			Assert.That (mailbox.GetAddress (true), Is.EqualTo ("點看@" + idn.GetAscii ("名がドメイン.com")), "IDN-encode #5");
 		}
 
 		[Test]
@@ -606,58 +686,59 @@ namespace UnitTests {
 
 			// Test IsInternational local-parts
 			mailbox = new MailboxAddress ("Unit Test", "點看@domain.com");
-			Assert.IsTrue (mailbox.IsInternational, "IsInternational local-part");
+			Assert.That (mailbox.IsInternational, Is.True, "IsInternational local-part");
 			encoded = mailbox.ToString (options, true);
-			Assert.AreEqual ("Unit Test <點看@domain.com>", encoded, "ToString local-part");
-
-			// Test IsInternational IDN-encoded local-parts
-			mailbox = new MailboxAddress ("Unit Test", idn.GetAscii ("點看") + "@domain.com");
-			Assert.IsTrue (mailbox.IsInternational, "IsInternational IDN-encoded local-part");
-			encoded = mailbox.ToString (options, true);
-			Assert.AreEqual ("Unit Test <點看@domain.com>", encoded, "ToString IDN-encoded local-part");
+			Assert.That (encoded, Is.EqualTo ("Unit Test <點看@domain.com>"), "ToString local-part");
 
 			// Test IsInternational domain
 			mailbox = new MailboxAddress ("Unit Test", "user@名がドメイン.com");
-			Assert.IsTrue (mailbox.IsInternational, "IsInternational domain");
+			Assert.That (mailbox.IsInternational, Is.True, "IsInternational domain");
 			encoded = mailbox.ToString (options, true);
-			Assert.AreEqual ("Unit Test <user@名がドメイン.com>", encoded, "ToString domain");
+			Assert.That (encoded, Is.EqualTo ("Unit Test <user@名がドメイン.com>"), "ToString domain");
 
 			// Test IsInternational IDN-encoded domain
 			mailbox = new MailboxAddress ("Unit Test", "user@" + idn.GetAscii ("名がドメイン.com"));
-			Assert.IsTrue (mailbox.IsInternational, "IsInternational IDN-encoded domain");
+			Assert.That (mailbox.IsInternational, Is.True, "IsInternational IDN-encoded domain");
 			encoded = mailbox.ToString (options, true);
-			Assert.AreEqual ("Unit Test <user@名がドメイン.com>", encoded, "ToString IDN-encoded domain");
+			Assert.That (encoded, Is.EqualTo ("Unit Test <user@名がドメイン.com>"), "ToString IDN-encoded domain");
 
 			// Test IsInternational routes
 			mailbox = new MailboxAddress ("Unit Test", "user@domain.com");
-			Assert.IsFalse (mailbox.IsInternational, "IsInternational");
+			Assert.That (mailbox.IsInternational, Is.False, "IsInternational");
 			mailbox.Route.Add ("route1");          // non-international route
 			mailbox.Route.Add ("名がドメイン.com"); // international route
-			Assert.IsTrue (mailbox.IsInternational, "IsInternational route");
+			Assert.That (mailbox.IsInternational, Is.True, "IsInternational route");
 			encoded = mailbox.ToString (options, true);
-			Assert.AreEqual ("Unit Test <@route1,@名がドメイン.com:user@domain.com>", encoded, "ToString route");
+			Assert.That (encoded, Is.EqualTo ("Unit Test <@route1,@名がドメイン.com:user@domain.com>"), "ToString route");
 		}
 
 		[Test]
 		public void TestIdnEncoding ()
 		{
-			const string userAscii = "xn--c1yn36f@domain.com";
-			const string userUnicode = "點看@domain.com";
 			const string domainAscii = "user@xn--v8jxj3d1dzdz08w.com";
 			const string domainUnicode = "user@名がドメイン.com";
+			MailboxAddress mailbox;
 			string encoded;
 
+			encoded = MailboxAddress.EncodeAddrspec (string.Empty);
+			Assert.That (encoded, Is.EqualTo (string.Empty), "Empty (Encode)");
+
+			encoded = MailboxAddress.DecodeAddrspec (string.Empty);
+			Assert.That (encoded, Is.EqualTo (string.Empty), "Empty (Decode)");
+
 			encoded = MailboxAddress.EncodeAddrspec (domainUnicode);
-			Assert.AreEqual (domainAscii, encoded, "Domain (Encode)");
+			Assert.That (encoded, Is.EqualTo (domainAscii), "Domain (Encode)");
 
 			encoded = MailboxAddress.DecodeAddrspec (domainAscii);
-			Assert.AreEqual (domainUnicode, encoded, "Domain (Decode)");
+			Assert.That (encoded, Is.EqualTo (domainUnicode), "Domain (Decode)");
 
-			encoded = MailboxAddress.EncodeAddrspec (userUnicode);
-			Assert.AreEqual (userAscii, encoded, "Local-part (Encode)");
+			mailbox = new MailboxAddress (string.Empty, domainAscii);
+			Assert.That (mailbox.GetAddress (true), Is.EqualTo (domainAscii), "Ascii Domain GetAddress(true)");
+			Assert.That (mailbox.GetAddress (false), Is.EqualTo (domainUnicode), "Ascii Domain GetAddress(false)");
 
-			encoded = MailboxAddress.DecodeAddrspec (userAscii);
-			Assert.AreEqual (userUnicode, encoded, "Local-part (Decode)");
+			mailbox = new MailboxAddress (string.Empty, domainUnicode);
+			Assert.That (mailbox.GetAddress (true), Is.EqualTo (domainAscii), "Unicode Domain GetAddress(true)");
+			Assert.That (mailbox.GetAddress (false), Is.EqualTo (domainUnicode), "Unicode Domain GetAddress(false)");
 		}
 
 		[Test]
@@ -671,7 +752,7 @@ namespace UnitTests {
 			mailbox.Route.Add ("forward.com");
 			mailbox.Route.Add ("geek.net");
 
-			Assert.AreEqual (expected, mailbox.ToString (true).Replace ("\r\n", "\n"), "Encoded mailbox does not match.");
+			Assert.That (mailbox.ToString (true).Replace ("\r\n", "\n"), Is.EqualTo (expected), "Encoded mailbox does not match.");
 
 			AssertParse (expected);
 
@@ -679,11 +760,11 @@ namespace UnitTests {
 
 			var encoded = mailbox.ToString (true);
 
-			Assert.AreEqual (expectedNoName, encoded, "Encoded mailbox does not match after setting Name to null.");
+			Assert.That (encoded, Is.EqualTo (expectedNoName), "Encoded mailbox does not match after setting Name to null.");
 
 			encoded = mailbox.ToString (false);
 
-			Assert.AreEqual (expectedNoName, encoded, "ToString mailbox does not match after setting Name to null.");
+			Assert.That (encoded, Is.EqualTo (expectedNoName), "ToString mailbox does not match after setting Name to null.");
 		}
 
 		[Test]
@@ -695,11 +776,11 @@ namespace UnitTests {
 			var mailbox = new MailboxAddress ("User Name", route, "user@domain.com");
 			var options = FormatOptions.Default.Clone ();
 
-			Assert.AreEqual (expectedIdn, mailbox.ToString (options, true));
+			Assert.That (mailbox.ToString (options, true), Is.EqualTo (expectedIdn));
 
 			options.International = true;
 
-			Assert.AreEqual (expected, mailbox.ToString (options, true));
+			Assert.That (mailbox.ToString (options, true), Is.EqualTo (expected));
 		}
 
 		#region Rfc7103
@@ -762,46 +843,107 @@ namespace UnitTests {
 		}
 
 		[Test]
-		public void TestParseMailboxWithLatin1EncodedAddrspec ()
+		public void TestParseMailboxWithLatin1EncodedAddrspecLoose ()
 		{
 			const string text = "Name <æøå@example.com>";
 			var buffer = CharsetUtils.Latin1.GetBytes (text);
 			MailboxAddress mailbox;
 
 			try {
-				Assert.IsTrue (MailboxAddress.TryParse (buffer, out mailbox), "MailboxAddress.TryParse(byte[]) should succeed.");
+				Assert.That (MailboxAddress.TryParse (buffer, out mailbox), Is.True, "MailboxAddress.TryParse(byte[]) should succeed.");
 			} catch (Exception ex) {
-				Assert.Fail ("MailboxAddress.TryParse(byte[]) should not throw an exception: {0}", ex);
+				Assert.Fail ($"MailboxAddress.TryParse(byte[]) should not throw an exception: {ex}");
 			}
 
 			try {
-				Assert.IsTrue (MailboxAddress.TryParse (buffer, 0, out mailbox), "MailboxAddress.TryParse(byte[], int) should succeed.");
+				Assert.That (MailboxAddress.TryParse (buffer, 0, out mailbox), Is.True, "MailboxAddress.TryParse(byte[], int) should succeed.");
 			} catch (Exception ex) {
-				Assert.Fail ("MailboxAddress.TryParse(byte[], int) should not throw an exception: {0}", ex);
+				Assert.Fail ($"MailboxAddress.TryParse(byte[], int) should not throw an exception: {ex}");
 			}
 
 			try {
-				Assert.IsTrue (MailboxAddress.TryParse (buffer, 0, buffer.Length, out mailbox), "MailboxAddress.TryParse(byte[], int, int) should succeed.");
+				Assert.That (MailboxAddress.TryParse (buffer, 0, buffer.Length, out mailbox), Is.True, "MailboxAddress.TryParse(byte[], int, int) should succeed.");
 			} catch (Exception ex) {
-				Assert.Fail ("MailboxAddress.TryParse(byte[], int, int) should not throw an exception: {0}", ex);
+				Assert.Fail ($"MailboxAddress.TryParse(byte[], int, int) should not throw an exception: {ex}");
 			}
 
 			try {
 				mailbox = MailboxAddress.Parse (buffer);
 			} catch (Exception ex) {
-				Assert.Fail ("MailboxAddress.Parse(string) should not throw an exception: {0}", ex);
+				Assert.Fail ($"MailboxAddress.Parse(byte[]) should not throw an exception: {ex}");
 			}
 
 			try {
 				mailbox = MailboxAddress.Parse (buffer, 0);
 			} catch (Exception ex) {
-				Assert.Fail ("MailboxAddress.Parse(string) should not throw an exception: {0}", ex);
+				Assert.Fail ($"MailboxAddress.Parse(byte[], int) should not throw an exception: {ex}");
 			}
 
 			try {
 				mailbox = MailboxAddress.Parse (buffer, 0, buffer.Length);
 			} catch (Exception ex) {
-				Assert.Fail ("MailboxAddress.Parse(string) should not throw an exception: {0}", ex);
+				Assert.Fail ($"MailboxAddress.Parse(byte[], int, int) should not throw an exception: {ex}");
+			}
+		}
+
+		[Test]
+		public void TestParseMailboxWithLatin1EncodedAddrspecStrict ()
+		{
+			const string text = "Name <æøå@example.com>";
+			var buffer = CharsetUtils.Latin1.GetBytes (text);
+			var options = ParserOptions.Default.Clone ();
+			const int tokenIndex = 6;
+			const int errorIndex = 6;
+			MailboxAddress mailbox;
+
+			options.AddressParserComplianceMode = RfcComplianceMode.Strict;
+
+			try {
+				Assert.That (MailboxAddress.TryParse (options, buffer, out mailbox), Is.False, "MailboxAddress.TryParse(ParserOptions, byte[]) should fail.");
+			} catch (Exception ex) {
+				Assert.Fail ($"MailboxAddress.TryParse(ParserOptions, byte[]) should not throw an exception: {ex}");
+			}
+
+			try {
+				Assert.That (MailboxAddress.TryParse (options, buffer, 0, out mailbox), Is.False, "MailboxAddress.TryParse(byte[], int) should fail.");
+			} catch (Exception ex) {
+				Assert.Fail ($"MailboxAddress.TryParse(ParserOptions, byte[], int) should not throw an exception: {ex}");
+			}
+
+			try {
+				Assert.That (MailboxAddress.TryParse (options, buffer, 0, buffer.Length, out mailbox), Is.False, "MailboxAddress.TryParse(ParserOptions, byte[], int, int) should fail.");
+			} catch (Exception ex) {
+				Assert.Fail ($"MailboxAddress.TryParse(ParserOptions, byte[], int, int) should not throw an exception: {ex}");
+			}
+
+			try {
+				mailbox = MailboxAddress.Parse (options, buffer);
+				Assert.Fail ("MailboxAddress.Parse(ParserOptions, byte[]) should fail.");
+			} catch (ParseException ex) {
+				Assert.That (ex.TokenIndex, Is.EqualTo (tokenIndex), "ParseException did not have the correct token index.");
+				Assert.That (ex.ErrorIndex, Is.EqualTo (errorIndex), "ParseException did not have the correct error index.");
+			} catch {
+				Assert.Fail ("MailboxAddress.Parse(ParserOptions, byte[]) should throw ParseException.");
+			}
+
+			try {
+				mailbox = MailboxAddress.Parse (options, buffer, 0);
+				Assert.Fail ("MailboxAddress.Parse(ParserOptions, byte[], int) should fail.");
+			} catch (ParseException ex) {
+				Assert.That (ex.TokenIndex, Is.EqualTo (tokenIndex), "ParseException did not have the correct token index.");
+				Assert.That (ex.ErrorIndex, Is.EqualTo (errorIndex), "ParseException did not have the correct error index.");
+			} catch {
+				Assert.Fail ("MailboxAddress.Parse(ParserOptions, byte[], int) should throw ParseException.");
+			}
+
+			try {
+				mailbox = MailboxAddress.Parse (options, buffer, 0, buffer.Length);
+				Assert.Fail ("MailboxAddress.Parse(ParserOptions, byte[], int, int) should fail.");
+			} catch (ParseException ex) {
+				Assert.That (ex.TokenIndex, Is.EqualTo (tokenIndex), "ParseException did not have the correct token index.");
+				Assert.That (ex.ErrorIndex, Is.EqualTo (errorIndex), "ParseException did not have the correct error index.");
+			} catch {
+				Assert.Fail ("MailboxAddress.Parse(ParserOptions, byte[], int, int) should throw ParseException.");
 			}
 		}
 
@@ -836,11 +978,44 @@ namespace UnitTests {
 		}
 
 		[Test]
-		public void TestParseAddrspecWitheroWidthSpace ()
+		public void TestParseAddrspecWithZeroWidthSpace ()
 		{
 			const string text = "\u200Btest@test.co.uk";
 
 			AssertParse (text);
+		}
+
+		[Test]
+		public void TestParseAddrspecEndingWithDot ()
+		{
+			const string text = "test.@gmail.com";
+
+			AssertParse (text, RfcComplianceMode.Looser);
+
+			AssertParseFailure (text, false, 0, 5, RfcComplianceMode.Loose);
+			AssertParseFailure (text, false, 0, 5, RfcComplianceMode.Strict);
+		}
+
+		[Test]
+		public void TestParseAddrspecEndingWithDotDot ()
+		{
+			const string text = "test..@gmail.com";
+
+			AssertParse (text, RfcComplianceMode.Looser);
+
+			AssertParseFailure (text, false, 0, 5, RfcComplianceMode.Loose);
+			AssertParseFailure (text, false, 0, 5, RfcComplianceMode.Strict);
+		}
+
+		[Test]
+		public void TestParseAddrspecWithDotDot ()
+		{
+			const string text = "test..test@gmail.com";
+
+			AssertParse (text, RfcComplianceMode.Looser);
+
+			AssertParseFailure (text, false, 0, 5, RfcComplianceMode.Loose);
+			AssertParseFailure (text, false, 0, 5, RfcComplianceMode.Strict);
 		}
 	}
 }

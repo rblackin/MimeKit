@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -59,10 +59,10 @@ namespace MimeKit {
 		/// </exception>
 		public ContentType (string mediaType, string mediaSubtype)
 		{
-			if (mediaType == null)
+			if (mediaType is null)
 				throw new ArgumentNullException (nameof (mediaType));
 
-			if (mediaSubtype == null)
+			if (mediaSubtype is null)
 				throw new ArgumentNullException (nameof (mediaSubtype));
 
 			Parameters = new ParameterList ();
@@ -85,7 +85,7 @@ namespace MimeKit {
 		public string MediaType {
 			get { return type; }
 			set {
-				if (value == null)
+				if (value is null)
 					throw new ArgumentNullException (nameof (value));
 
 				if (type == value)
@@ -112,7 +112,7 @@ namespace MimeKit {
 		public string MediaSubtype {
 			get { return subtype; }
 			set {
-				if (value == null)
+				if (value is null)
 					throw new ArgumentNullException (nameof (value));
 
 				if (subtype == value)
@@ -192,7 +192,7 @@ namespace MimeKit {
 			get {
 				var charset = Charset;
 
-				if (charset == null)
+				if (charset is null)
 					return null;
 
 				try {
@@ -225,21 +225,21 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets the simple mime-type.
+		/// Get the simple mime-type.
 		/// </summary>
 		/// <remarks>
 		/// Gets the simple mime-type.
 		/// </remarks>
 		/// <value>The mime-type.</value>
 		public string MimeType {
-			get { return string.Format ("{0}/{1}", MediaType, MediaSubtype); }
+			get { return $"{MediaType}/{MediaSubtype}"; }
 		}
 
 		/// <summary>
 		/// Get or set the name parameter.
 		/// </summary>
 		/// <remarks>
-		/// The name parameter is a way for the originiating client to suggest
+		/// The name parameter is a way for the originating client to suggest
 		/// to the receiving client a display-name for the content, which may
 		/// be used by the receiving client if it cannot display the actual
 		/// content to the user.
@@ -253,6 +253,23 @@ namespace MimeKit {
 				else
 					Parameters.Remove ("name");
 			}
+		}
+
+		/// <summary>
+		/// Clone the content type.
+		/// </summary>
+		/// <remarks>
+		/// Clones the content type.
+		/// </remarks>
+		/// <returns>The cloned content type.</returns>
+		public ContentType Clone ()
+		{
+			var contentType = new ContentType (type, subtype);
+
+			foreach (var parameter in parameters)
+				contentType.Parameters.Add (parameter.Clone ());
+
+			return contentType;
 		}
 
 		/// <summary>
@@ -274,10 +291,10 @@ namespace MimeKit {
 		/// </exception>
 		public bool IsMimeType (string mediaType, string mediaSubtype)
 		{
-			if (mediaType == null)
+			if (mediaType is null)
 				throw new ArgumentNullException (nameof (mediaType));
 
-			if (mediaSubtype == null)
+			if (mediaSubtype is null)
 				throw new ArgumentNullException (nameof (mediaSubtype));
 
 			if (mediaType == "*" || mediaType.Equals (type, StringComparison.OrdinalIgnoreCase))
@@ -289,23 +306,23 @@ namespace MimeKit {
 		internal string Encode (FormatOptions options, Encoding charset)
 		{
 			int lineLength = "Content-Type:".Length;
-			var value = new StringBuilder (" ");
+			var builder = new ValueStringBuilder (128);
 
-			value.Append (MediaType);
-			value.Append ('/');
-			value.Append (MediaSubtype);
+			builder.Append (' ');
+			builder.Append (MediaType);
+			builder.Append ('/');
+			builder.Append (MediaSubtype);
 
-			lineLength += value.Length;
+			lineLength += builder.Length;
 
-			Parameters.Encode (options, value, ref lineLength, charset);
-			value.Append (options.NewLine);
+			Parameters.Encode (options, ref builder, ref lineLength, charset);
+			builder.Append (options.NewLine);
 
-			return value.ToString ();
+			return builder.ToString ();
 		}
 
 		/// <summary>
-		/// Serialize the <see cref="ContentType"/> to a string,
-		/// optionally encoding the parameters.
+		/// Serialize the <see cref="ContentType"/> to a string, optionally encoding the parameters.
 		/// </summary>
 		/// <remarks>
 		/// Creates a string-representation of the <see cref="ContentType"/>, optionally encoding
@@ -322,31 +339,31 @@ namespace MimeKit {
 		/// </exception>
 		public string ToString (FormatOptions options, Encoding charset, bool encode)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (charset == null)
+			if (charset is null)
 				throw new ArgumentNullException (nameof (charset));
 
-			var value = new StringBuilder ("Content-Type: ");
-			value.Append (MediaType);
-			value.Append ('/');
-			value.Append (MediaSubtype);
+			var builder = new ValueStringBuilder (128);
+			builder.Append ("Content-Type: ");
+			builder.Append (MediaType);
+			builder.Append ('/');
+			builder.Append (MediaSubtype);
 
 			if (encode) {
-				int lineLength = value.Length;
+				int lineLength = builder.Length;
 
-				Parameters.Encode (options, value, ref lineLength, charset);
+				Parameters.Encode (options, ref builder, ref lineLength, charset);
 			} else {
-				value.Append (Parameters.ToString ());
+				Parameters.WriteTo (ref builder);
 			}
 
-			return value.ToString ();
+			return builder.ToString ();
 		}
 
 		/// <summary>
-		/// Serialize the <see cref="ContentType"/> to a string,
-		/// optionally encoding the parameters.
+		/// Serialize the <see cref="ContentType"/> to a string, optionally encoding the parameters.
 		/// </summary>
 		/// <remarks>
 		/// Creates a string-representation of the <see cref="ContentType"/>, optionally encoding
@@ -364,6 +381,20 @@ namespace MimeKit {
 		}
 
 		/// <summary>
+		/// Serialize the <see cref="ContentType"/> to a string, optionally encoding the parameters.
+		/// </summary>
+		/// <remarks>
+		/// Creates a string-representation of the <see cref="ContentType"/>, optionally encoding
+		/// the parameters as they would be encoded for transport.
+		/// </remarks>
+		/// <returns>The serialized string.</returns>
+		/// <param name="encode">If set to <c>true</c>, the parameter values will be encoded.</param>
+		public string ToString (bool encode)
+		{
+			return ToString (FormatOptions.Default, Encoding.UTF8, encode);
+		}
+
+		/// <summary>
 		/// Serialize the <see cref="ContentType"/> to a string.
 		/// </summary>
 		/// <remarks>
@@ -373,7 +404,7 @@ namespace MimeKit {
 		/// <see cref="ContentType"/>.</returns>
 		public override string ToString ()
 		{
-			return ToString (FormatOptions.Default, Encoding.UTF8, false);
+			return ToString (false);
 		}
 
 		internal event EventHandler Changed;
@@ -385,8 +416,7 @@ namespace MimeKit {
 
 		void OnChanged ()
 		{
-			if (Changed != null)
-				Changed (this, EventArgs.Empty);
+			Changed?.Invoke (this, EventArgs.Empty);
 		}
 
 		static bool SkipType (byte[] text, ref int index, int endIndex)
@@ -394,6 +424,16 @@ namespace MimeKit {
 			int startIndex = index;
 
 			while (index < endIndex && text[index].IsAsciiAtom () && text[index] != (byte) '/')
+				index++;
+
+			return index > startIndex;
+		}
+
+		static bool SkipSubtype (byte[] text, ref int index, int endIndex)
+		{
+			int startIndex = index;
+
+			while (index < endIndex && (text[index].IsToken () || text[index] == (byte) '/'))
 				index++;
 
 			return index > startIndex;
@@ -436,7 +476,7 @@ namespace MimeKit {
 				return false;
 
 			start = index;
-			if (!ParseUtils.SkipToken (text, ref index, endIndex)) {
+			if (!SkipSubtype (text, ref index, endIndex)) {
 				if (throwOnError)
 					throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Invalid atom token at position {0}", start), start, index);
 
@@ -468,8 +508,7 @@ namespace MimeKit {
 			if (index >= endIndex)
 				return true;
 
-			ParameterList parameters;
-			if (!ParameterList.TryParse (options, text, ref index, endIndex, throwOnError, out parameters))
+			if (!ParameterList.TryParse (options, text, ref index, endIndex, throwOnError, out var parameters))
 				return false;
 
 			contentType.Parameters = parameters;
@@ -629,7 +668,7 @@ namespace MimeKit {
 		/// Parses a Content-Type value from the specified text.
 		/// </remarks>
 		/// <returns><c>true</c> if the content type was successfully parsed; otherwise, <c>false</c>.</returns>
-		/// <param name="options">THe parser options.</param>
+		/// <param name="options">The parser options.</param>
 		/// <param name="text">The text to parse.</param>
 		/// <param name="type">The parsed content type.</param>
 		/// <exception cref="System.ArgumentNullException">
@@ -693,9 +732,8 @@ namespace MimeKit {
 			ParseUtils.ValidateArguments (options, buffer, startIndex, length);
 
 			int index = startIndex;
-			ContentType type;
 
-			TryParse (options, buffer, ref index, startIndex + length, true, out type);
+			TryParse (options, buffer, ref index, startIndex + length, true, out var type);
 
 			return type;
 		}
@@ -752,9 +790,8 @@ namespace MimeKit {
 			ParseUtils.ValidateArguments (options, buffer, startIndex);
 
 			int index = startIndex;
-			ContentType type;
 
-			TryParse (options, buffer, ref index, buffer.Length, true, out type);
+			TryParse (options, buffer, ref index, buffer.Length, true, out var type);
 
 			return type;
 		}
@@ -803,10 +840,9 @@ namespace MimeKit {
 		{
 			ParseUtils.ValidateArguments (options, buffer);
 
-			ContentType type;
 			int index = 0;
 
-			TryParse (options, buffer, ref index, buffer.Length, true, out type);
+			TryParse (options, buffer, ref index, buffer.Length, true, out var type);
 
 			return type;
 		}
@@ -852,10 +888,9 @@ namespace MimeKit {
 			ParseUtils.ValidateArguments (options, text);
 
 			var buffer = Encoding.UTF8.GetBytes (text);
-			ContentType type;
 			int index = 0;
 
-			TryParse (options, buffer, ref index, buffer.Length, true, out type);
+			TryParse (options, buffer, ref index, buffer.Length, true, out var type);
 
 			return type;
 		}

@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -27,6 +27,8 @@
 using System;
 
 using MimeKit.IO;
+using MimeKit.IO.Filters;
+using MimeKit.Utils;
 
 namespace MimeKit {
 	/// <summary>
@@ -41,7 +43,7 @@ namespace MimeKit {
 	/// <example>
 	/// <code language="c#" source="Examples\MessageDeliveryStatusExamples.cs" region="ProcessDeliveryStatusNotification" />
 	/// </example>
-	public class MessageDeliveryStatus : MimePart
+	public class MessageDeliveryStatus : MimePart, IMessageDeliveryStatus
 	{
 		HeaderListCollection groups;
 
@@ -69,6 +71,11 @@ namespace MimeKit {
 		{
 		}
 
+		void CheckDisposed ()
+		{
+			CheckDisposed (nameof (MessageDeliveryStatus));
+		}
+
 		/// <summary>
 		/// Get the groups of delivery status fields.
 		/// </summary>
@@ -87,23 +94,19 @@ namespace MimeKit {
 		/// <code language="c#" source="Examples\MessageDeliveryStatusExamples.cs" region="ProcessDeliveryStatusNotification" />
 		/// </example>
 		/// <value>The fields.</value>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MessageDeliveryStatus"/> has been disposed.
+		/// </exception>
 		public HeaderListCollection StatusGroups {
 			get {
-				if (groups == null) {
-					if (Content == null) {
+				CheckDisposed ();
+
+				if (groups is null) {
+					if (Content is null) {
 						Content = new MimeContent (new MemoryBlockStream ());
 						groups = new HeaderListCollection ();
 					} else {
-						groups = new HeaderListCollection ();
-
-						using (var stream = Content.Open ()) {
-							var parser = new MimeParser (stream, MimeFormat.Entity);
-
-							while (!parser.IsEndOfStream) {
-								var fields = parser.ParseHeaders ();
-								groups.Add (fields);
-							}
-						}
+						ParseStatusGroups ();
 					}
 
 					groups.Changed += OnGroupsChanged;
@@ -113,16 +116,76 @@ namespace MimeKit {
 			}
 		}
 
+		void ParseStatusGroups ()
+		{
+			groups = new HeaderListCollection ();
+
+			try {
+				using (var stream = Content.Open ()) {
+					var parser = new MimeParser (stream, MimeFormat.Entity);
+					var encoding = ContentEncoding.Default;
+
+					// According to rfc3464, there are 1 or more Status Groups consisting of a block of field/value
+					// pairs (aka headers) separated by a blank line.
+					while (!parser.IsEndOfStream) {
+						var fields = parser.ParseStatusGroup ();
+						groups.Add (fields);
+
+						// Note: Office365 seems to sometimes base64 encode everything after the first Status Group of headers.
+						//
+						// In the sample case that @alex-jitbit provided in issue #250, Office365 added a Content-Transfer-Encoding
+						// header to the first Status Group and then base64 encoded the remainder of the content. Therefore, if we
+						// encounter a Content-Transfer-Encoding header (that needs decoding), break out of this loop so that we can
+						// decode the rest of the content and parse the result for the remainder of the Status Groups.
+						if (fields.TryGetHeader (HeaderId.ContentTransferEncoding, out var header)) {
+							MimeUtils.TryParse (header.Value, out encoding);
+
+							// Note: Base64, QuotedPrintable and UUEncode are all > Binary
+							if (encoding > ContentEncoding.Binary)
+								break;
+
+							// Note: If the Content-Transfer-Encoding is 7bit, 8bit, or even binary, then the content doesn't need to
+							// be decoded in order to continue parsing the remaining Status Groups.
+							encoding = ContentEncoding.Default;
+						}
+					}
+
+					if (encoding != ContentEncoding.Default) {
+						// This means that the remainder of the Status Groups have been encoded, so we'll need to decode
+						// the rest of the content stream in order to parse them.
+						using (var content = parser.ReadToEos ()) {
+							using (var filtered = new FilteredStream (content)) {
+								filtered.Add (DecoderFilter.Create (encoding));
+								parser.SetStream (filtered, MimeFormat.Entity);
+
+								while (!parser.IsEndOfStream) {
+									var fields = parser.ParseHeaders ();
+									groups.Add (fields);
+								}
+							}
+						}
+					}
+				}
+			} catch (FormatException) {
+			}
+		}
+
 		void OnGroupsChanged (object sender, EventArgs e)
 		{
 			var stream = new MemoryBlockStream ();
 			var options = FormatOptions.Default;
 
-			for (int i = 0; i < groups.Count; i++)
-				groups[i].WriteTo (options, stream);
+			try {
+				for (int i = 0; i < groups.Count; i++)
+					groups[i].WriteTo (options, stream);
 
-			stream.Position = 0;
+				stream.Position = 0;
+			} catch {
+				stream.Dispose ();
+				throw;
+			}
 
+			Content?.Dispose ();
 			Content = new MimeContent (stream);
 		}
 
@@ -141,10 +204,15 @@ namespace MimeKit {
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="visitor"/> is <c>null</c>.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MessageDeliveryStatus"/> has been disposed.
+		/// </exception>
 		public override void Accept (MimeVisitor visitor)
 		{
-			if (visitor == null)
+			if (visitor is null)
 				throw new ArgumentNullException (nameof (visitor));
+
+			CheckDisposed ();
 
 			visitor.VisitMessageDeliveryStatus (this);
 		}

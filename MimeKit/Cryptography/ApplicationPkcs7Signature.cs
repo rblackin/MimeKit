@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -38,7 +38,7 @@ namespace MimeKit.Cryptography {
 	/// <a href="Overload_MimeKit_Cryptography_MultipartSigned_Verify.htm">Verify</a>
 	/// methods on the parent multipart/signed part.</para>
 	/// </remarks>
-	public class ApplicationPkcs7Signature : MimePart
+	public class ApplicationPkcs7Signature : MimePart, IApplicationPkcs7Signature
 	{
 		/// <summary>
 		/// Initialize a new instance of the <see cref="ApplicationPkcs7Signature"/> class.
@@ -79,6 +79,11 @@ namespace MimeKit.Cryptography {
 			FileName = "smime.p7s";
 		}
 
+		void CheckDisposed ()
+		{
+			CheckDisposed (nameof (ApplicationPkcs7Signature));
+		}
+
 		/// <summary>
 		/// Dispatches to the specific visit method for this MIME entity.
 		/// </summary>
@@ -94,10 +99,15 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="visitor"/> is <c>null</c>.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="ApplicationPkcs7Signature"/> has been disposed.
+		/// </exception>
 		public override void Accept (MimeVisitor visitor)
 		{
 			if (visitor == null)
 				throw new ArgumentNullException (nameof (visitor));
+
+			CheckDisposed ();
 
 			visitor.VisitApplicationPkcs7Signature (this);
 		}

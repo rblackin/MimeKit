@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -33,15 +33,17 @@ namespace MimeKit.IO.Filters {
 	/// Quoted-Printable encoding.
 	/// </summary>
 	/// <remarks>
-	/// <para>From-armoring is a workaround to prevent receiving clients (or servers)
-	/// that uses the mbox file format for local storage from munging the line
-	/// by prepending a ">", as is typical with the mbox format.</para>
+	/// <para>From-armoring is a workaround to prevent receiving clients and/or servers
+	/// that use the mbox file format for local storage from munging every line of the
+	/// message content beginning with "From " by prepending a ">" to each of those lines,
+	/// as is typical with software using the mbox format.</para>
 	/// <para>This armoring technique ensures that the receiving client will still
-	/// be able to verify S/MIME signatures.</para>
+	/// be able to verify PGP/MIME and S/MIME signatures.</para>
 	/// </remarks>
 	public class ArmoredFromFilter : MimeFilterBase
 	{
-		const string From = "From ";
+		static ReadOnlySpan<byte> From => "From "u8;
+
 		bool midline;
 
 		/// <summary>
@@ -57,7 +59,7 @@ namespace MimeKit.IO.Filters {
 		static bool StartsWithFrom (byte[] input, int startIndex, int endIndex)
 		{
 			for (int i = 0, index = startIndex; i < From.Length && index < endIndex; i++, index++) {
-				if (input[index] != (byte) From[i])
+				if (input[index] != From[i])
 					return false;
 			}
 
@@ -153,7 +155,7 @@ namespace MimeKit.IO.Filters {
 		}
 
 		/// <summary>
-		/// Resets the filter.
+		/// Reset the filter.
 		/// </summary>
 		/// <remarks>
 		/// Resets the filter.

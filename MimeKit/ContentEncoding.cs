@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -76,7 +76,7 @@ namespace MimeKit {
 
 		/// <summary>
 		/// The uuencode content transfer encoding. This is an obsolete encoding meant for encoding binary
-		/// data and has largely been superceeded by <see cref="Base64"/>.
+		/// data and has largely been superseded by <see cref="Base64"/>.
 		/// </summary>
 		UUEncode,
 	}

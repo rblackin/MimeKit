@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -120,7 +120,7 @@ namespace MimeKit {
 		public string Disposition {
 			get { return disposition; }
 			set {
-				if (value == null)
+				if (value is null)
 					throw new ArgumentNullException (nameof (value));
 
 				if (value.Length == 0)
@@ -196,19 +196,6 @@ namespace MimeKit {
 			}
 		}
 
-		static bool IsNullOrWhiteSpace (string value)
-		{
-			if (string.IsNullOrEmpty (value))
-				return true;
-
-			for (int i = 0; i < value.Length; i++) {
-				if (!char.IsWhiteSpace (value[i]))
-					return false;
-			}
-
-			return true;
-		}
-
 		/// <summary>
 		/// Get or set the creation-date parameter.
 		/// </summary>
@@ -221,13 +208,12 @@ namespace MimeKit {
 		public DateTimeOffset? CreationDate {
 			get {
 				var value = Parameters["creation-date"];
-				if (IsNullOrWhiteSpace (value))
+				if (string.IsNullOrWhiteSpace (value))
 					return null;
 
 				var buffer = Encoding.UTF8.GetBytes (value);
-				DateTimeOffset ctime;
 
-				if (!DateUtils.TryParse (buffer, 0, buffer.Length, out ctime))
+				if (!DateUtils.TryParse (buffer, 0, buffer.Length, out var ctime))
 					return null;
 
 				return ctime;
@@ -252,13 +238,12 @@ namespace MimeKit {
 		public DateTimeOffset? ModificationDate {
 			get {
 				var value = Parameters["modification-date"];
-				if (IsNullOrWhiteSpace (value))
+				if (string.IsNullOrWhiteSpace (value))
 					return null;
 
 				var buffer = Encoding.UTF8.GetBytes (value);
-				DateTimeOffset mtime;
 
-				if (!DateUtils.TryParse (buffer, 0, buffer.Length, out mtime))
+				if (!DateUtils.TryParse (buffer, 0, buffer.Length, out var mtime))
 					return null;
 
 				return mtime;
@@ -283,13 +268,12 @@ namespace MimeKit {
 		public DateTimeOffset? ReadDate {
 			get {
 				var value = Parameters["read-date"];
-				if (IsNullOrWhiteSpace (value))
+				if (string.IsNullOrWhiteSpace (value))
 					return null;
 
 				var buffer = Encoding.UTF8.GetBytes (value);
-				DateTimeOffset atime;
 
-				if (!DateUtils.TryParse (buffer, 0, buffer.Length, out atime))
+				if (!DateUtils.TryParse (buffer, 0, buffer.Length, out var atime))
 					return null;
 
 				return atime;
@@ -314,44 +298,60 @@ namespace MimeKit {
 		public long? Size {
 			get {
 				var value = Parameters["size"];
-				if (IsNullOrWhiteSpace (value))
+				if (string.IsNullOrWhiteSpace (value))
 					return null;
 
-				long size;
-				if (!long.TryParse (value, out size))
+				if (!long.TryParse (value, out var size))
 					return null;
 
 				return size;
 			}
 			set {
 				if (value.HasValue)
-					Parameters["size"] = value.Value.ToString ();
+					Parameters["size"] = value.Value.ToString (CultureInfo.InvariantCulture);
 				else
 					Parameters.Remove ("size");
 			}
 		}
 
+		/// <summary>
+		/// Clone the content disposition.
+		/// </summary>
+		/// <remarks>
+		/// Clones the content disposition.
+		/// </remarks>
+		/// <returns>The cloned content disposition.s</returns>
+		public ContentDisposition Clone ()
+		{
+			var contentDisposition = new ContentDisposition (disposition);
+
+			foreach (var parameter in parameters)
+				contentDisposition.Parameters.Add (parameter.Clone ());
+
+			return contentDisposition;
+		}
+
 		internal string Encode (FormatOptions options, Encoding charset)
 		{
 			int lineLength = "Content-Disposition:".Length;
-			var value = new StringBuilder (" ");
+			var builder = new ValueStringBuilder (128);
 
-			value.Append (disposition);
-			lineLength += value.Length;
+			builder.Append (' ');
+			builder.Append (disposition);
+			lineLength += builder.Length;
 
-			Parameters.Encode (options, value, ref lineLength, charset);
-			value.Append (options.NewLine);
+			Parameters.Encode (options, ref builder, ref lineLength, charset);
+			builder.Append (options.NewLine);
 
-			return value.ToString ();
+			return builder.ToString ();
 		}
 
 		/// <summary>
-		/// Serialize the <see cref="ContentDisposition"/> to a string,
-		/// optionally encoding the parameters.
+		/// Serialize the <see cref="ContentDisposition"/> to a string, optionally encoding the parameters.
 		/// </summary>
 		/// <remarks>
 		/// Creates a string-representation of the <see cref="ContentDisposition"/>,
-		/// optionally encoding the parameters as they would be encoded for trabsport.
+		/// optionally encoding the parameters as they would be encoded for transport.
 		/// </remarks>
 		/// <returns>The serialized string.</returns>
 		/// <param name="options">The formatting options.</param>
@@ -364,33 +364,33 @@ namespace MimeKit {
 		/// </exception>
 		public string ToString (FormatOptions options, Encoding charset, bool encode)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (charset == null)
+			if (charset is null)
 				throw new ArgumentNullException (nameof (charset));
 
-			var value = new StringBuilder ("Content-Disposition: ");
-			value.Append (disposition);
+			var builder = new ValueStringBuilder (256);
+			builder.Append ("Content-Disposition: ");
+			builder.Append (disposition);
 
 			if (encode) {
-				int lineLength = value.Length;
+				int lineLength = builder.Length;
 
-				Parameters.Encode (options, value, ref lineLength, charset);
+				Parameters.Encode (options, ref builder, ref lineLength, charset);
 			} else {
-				value.Append (Parameters.ToString ());
+				Parameters.WriteTo (ref builder);
 			}
 
-			return value.ToString ();
+			return builder.ToString ();
 		}
 
 		/// <summary>
-		/// Serialize the <see cref="ContentDisposition"/> to a string,
-		/// optionally encoding the parameters.
+		/// Serialize the <see cref="ContentDisposition"/> to a string, optionally encoding the parameters.
 		/// </summary>
 		/// <remarks>
 		/// Creates a string-representation of the <see cref="ContentDisposition"/>,
-		/// optionally encoding the parameters as they would be encoded for trabsport.
+		/// optionally encoding the parameters as they would be encoded for transport.
 		/// </remarks>
 		/// <returns>The serialized string.</returns>
 		/// <param name="charset">The charset to be used when encoding the parameter values.</param>
@@ -404,6 +404,20 @@ namespace MimeKit {
 		}
 
 		/// <summary>
+		/// Serialize the <see cref="ContentDisposition"/> to a string, optionally encoding the parameters.
+		/// </summary>
+		/// <remarks>
+		/// Creates a string-representation of the <see cref="ContentDisposition"/>,
+		/// optionally encoding the parameters as they would be encoded for transport.
+		/// </remarks>
+		/// <returns>The serialized string.</returns>
+		/// <param name="encode">If set to <c>true</c>, the parameter values will be encoded.</param>
+		public string ToString (bool encode)
+		{
+			return ToString (FormatOptions.Default, Encoding.UTF8, encode);
+		}
+
+		/// <summary>
 		/// Serialize the <see cref="ContentDisposition"/> to a string.
 		/// </summary>
 		/// <remarks>
@@ -413,7 +427,7 @@ namespace MimeKit {
 		/// <see cref="ContentDisposition"/>.</returns>
 		public override string ToString ()
 		{
-			return ToString (FormatOptions.Default, Encoding.UTF8, false);
+			return ToString (false);
 		}
 
 		internal event EventHandler Changed;
@@ -425,8 +439,7 @@ namespace MimeKit {
 
 		void OnChanged ()
 		{
-			if (Changed != null)
-				Changed (this, EventArgs.Empty);
+			Changed?.Invoke (this, EventArgs.Empty);
 		}
 
 		internal static bool TryParse (ParserOptions options, byte[] text, ref int index, int endIndex, bool throwOnError, out ContentDisposition disposition)
@@ -449,7 +462,7 @@ namespace MimeKit {
 			atom = index;
 			if (text[index] == '"') {
 				if (throwOnError)
-					throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Unxpected qstring token at position {0}", atom), atom, index);
+					throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Unexpected qstring token at position {0}", atom), atom, index);
 
 				// Note: This is a work-around for broken mailers that quote the disposition value...
 				//
@@ -479,8 +492,9 @@ namespace MimeKit {
 				}
 			}
 
-			disposition = new ContentDisposition ();
-			disposition.disposition = type;
+			disposition = new ContentDisposition () {
+				disposition = type
+			};
 
 			if (!ParseUtils.SkipCommentsAndWhiteSpace (text, ref index, endIndex, throwOnError))
 				return false;
@@ -503,8 +517,7 @@ namespace MimeKit {
 			if (index >= endIndex)
 				return true;
 
-			ParameterList parameters;
-			if (!ParameterList.TryParse (options, text, ref index, endIndex, throwOnError, out parameters))
+			if (!ParameterList.TryParse (options, text, ref index, endIndex, throwOnError, out var parameters))
 				return false;
 
 			disposition.Parameters = parameters;
@@ -727,10 +740,9 @@ namespace MimeKit {
 		{
 			ParseUtils.ValidateArguments (options, buffer, startIndex, length);
 
-			ContentDisposition disposition;
 			int index = startIndex;
 
-			TryParse (options, buffer, ref index, startIndex + length, true, out disposition);
+			TryParse (options, buffer, ref index, startIndex + length, true, out var disposition);
 
 			return disposition;
 		}
@@ -786,10 +798,9 @@ namespace MimeKit {
 		{
 			ParseUtils.ValidateArguments (options, buffer, startIndex);
 
-			ContentDisposition disposition;
 			int index = startIndex;
 
-			TryParse (options, buffer, ref index, buffer.Length, true, out disposition);
+			TryParse (options, buffer, ref index, buffer.Length, true, out var disposition);
 
 			return disposition;
 		}
@@ -838,10 +849,9 @@ namespace MimeKit {
 		{
 			ParseUtils.ValidateArguments (options, buffer);
 
-			ContentDisposition disposition;
 			int index = 0;
 
-			TryParse (options, buffer, ref index, buffer.Length, true, out disposition);
+			TryParse (options, buffer, ref index, buffer.Length, true, out var disposition);
 
 			return disposition;
 		}
@@ -887,10 +897,9 @@ namespace MimeKit {
 			ParseUtils.ValidateArguments (options, text);
 
 			var buffer = Encoding.UTF8.GetBytes (text);
-			ContentDisposition disposition;
 			int index = 0;
 
-			TryParse (options, buffer, ref index, buffer.Length, true, out disposition);
+			TryParse (options, buffer, ref index, buffer.Length, true, out var disposition);
 
 			return disposition;
 		}

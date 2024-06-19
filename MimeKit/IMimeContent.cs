@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,6 +24,7 @@
 // THE SOFTWARE.
 //
 
+using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -38,7 +39,7 @@ namespace MimeKit {
 	/// <example>
 	/// <code language="c#" source="Examples\AttachmentExamples.cs" region="SaveAttachments" />
 	/// </example>
-	public interface IMimeContent
+	public interface IMimeContent : IDisposable
 	{
 		/// <summary>
 		/// Get the content encoding.
@@ -103,7 +104,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		void DecodeTo (Stream stream, CancellationToken cancellationToken = default (CancellationToken));
+		void DecodeTo (Stream stream, CancellationToken cancellationToken = default);
 
 		/// <summary>
 		/// Asynchronously decode the content stream into another stream.
@@ -128,7 +129,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		Task DecodeToAsync (Stream stream, CancellationToken cancellationToken = default (CancellationToken));
+		Task DecodeToAsync (Stream stream, CancellationToken cancellationToken = default);
 
 		/// <summary>
 		/// Copy the content stream to the specified output stream.
@@ -150,7 +151,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		void WriteTo (Stream stream, CancellationToken cancellationToken = default (CancellationToken));
+		void WriteTo (Stream stream, CancellationToken cancellationToken = default);
 
 		/// <summary>
 		/// Asynchronously copy the content stream to the specified output stream.
@@ -173,6 +174,6 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		Task WriteToAsync (Stream stream, CancellationToken cancellationToken = default (CancellationToken));
+		Task WriteToAsync (Stream stream, CancellationToken cancellationToken = default);
 	}
 }

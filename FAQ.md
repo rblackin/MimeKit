@@ -3,39 +3,53 @@
 ## Question Index
 
 ### General
-* [Are MimeKit and MailKit completely free? Can I use them in my proprietary product(s)?](#CompletelyFree)
+
+* [Are MimeKit and MailKit completely free? Can I use them in my proprietary product(s)?](#completely-free)
+* [Why do I get `NotSupportedException: No data is available for encoding ######. For information on defining a custom encoding, see the documentation for the Encoding.RegisterProvider method.`?](#register-provider)
 
 ### Messages
 
-* [How do I create a message with attachments?](#CreateAttachments)
-* [How do I get the main body of a message?](#MessageBody)
-* [How do I tell if a message has attachments?](#HasAttachments)
-* [Why doesn't the `MimeMessage` class implement `ISerializable` so that I can serialize a message to disk and read it back later?](#Serialize)
-* [How do I parse messages?](#LoadMessages)
-* [How do I save messages?](#SaveMessages)
-* [How do I save attachments?](#SaveAttachments)
-* [How do I get the email addresses in the From, To, and Cc headers?](#AddressHeaders)
-* [Why do attachments with unicode or long filenames appear as "ATT0####.dat" in Outlook?](#UntitledAttachments)
-* [How do I decrypt PGP messages that are embedded in the main message text?](#DecryptInlinePGP)
-* [How do I reply to a message using MimeKit?](#Reply)
-* [How do I forward a message?](#Forward)
+* [How do I create a message with attachments?](#create-attachments)
+* [How do I get the main body of a message?](#message-body)
+* [How do I tell if a message has attachments?](#has-attachments)
+* [Why doesn't the `MimeMessage` class implement `ISerializable` so that I can serialize a message to disk and read it back later?](#serialize-message)
+* [How do I parse messages?](#load-messages)
+* [How do I save messages?](#save-messages)
+* [How do I save attachments?](#save-attachments)
+* [How do I get the email addresses in the From, To, and Cc headers?](#address-headers)
+* [Why do attachments with unicode or long filenames appear as "ATT0####.dat" in Outlook?](#untitled-attachments)
+* [How do I decrypt PGP messages that are embedded in the main message text?](#decrypt-inline-pgp)
+* [How do I reply to a message using MimeKit?](#reply-message)
+* [How do I forward a message?](#forward-message)
+* [Why does text show up garbled in my ASP.NET Core / .NET Core / .NET 5 app?](#garbled-text)
 
 ### Specialty
 
-* [How would I parse multipart/form-data from an HTTP web request?](#ParseWebRequestFormData)
-
+* [How would I parse multipart/form-data from an HTTP web request?](#parse-web-request-form-data)
 
 ## General
 
-### <a name="CompletelyFree">Q: Are MimeKit and MailKit completely free? Can I use them in my proprietary product(s)?</a>
+### <a name="completely-free">Q: Are MimeKit and MailKit completely free? Can I use them in my proprietary product(s)?</a>
 
 Yes. MimeKit and MailKit are both completely free and open source. They are both covered under the
 [MIT](https://opensource.org/licenses/MIT) license.
 
+### <a name="register-provider">Q: Why do I get `NotSupportedException: No data is available for encoding ######. For information on defining a custom encoding, see the documentation for the Encoding.RegisterProvider method.`?</a>
+
+In .NET Core, Microsoft decided to split out the non-Unicode text encodings into a separate NuGet package called
+[System.Text.Encoding.CodePages](https://www.nuget.org/packages/System.Text.Encoding.CodePages).
+
+MimeKit already pulls in a reference to this NuGet package, so you shsouldn't need to add a reference to it in
+your project. That said, you will still need to register the encoding provider. It is recommended that you add
+the following line of code to your program initialization (e.g. the beginning of your program's Main() method):
+
+```csharp
+System.Text.Encoding.RegisterProvider (System.Text.CodePagesEncodingProvider.Instance);
+```
 
 ## Messages
 
-### <a name="CreateAttachments">Q: How do I create a message with attachments?</a>
+### <a name="create-attachments">Q: How do I create a message with attachments?</a>
 
 To construct a message with attachments, the first thing you'll need to do is create a `multipart/mixed`
 container which you'll then want to add the message body to first. Once you've added the body, you can
@@ -43,7 +57,7 @@ then add MIME parts to it that contain the content of the files you'd like to at
 the `Content-Disposition` header value to attachment. You'll probably also want to set the `filename`
 parameter on the `Content-Disposition` header as well as the `name` parameter on the `Content-Type`
 header. The most convenient way to do this is to use the
-[MimePart.FileName](http://www.mimekit.net/docs/html/P_MimeKit_MimePart_FileName.htm) property which
+[MimePart.FileName](https://www.mimekit.net/docs/html/P_MimeKit_MimePart_FileName.htm) property which
 will set both parameters for you as well as setting the `Content-Disposition` header value to `attachment`
 if it has not already been set to something else.
 
@@ -85,7 +99,7 @@ message.Body = multipart;
 ```
 
 A simpler way to construct messages with attachments is to take advantage of the
-[BodyBuilder](http://www.mimekit.net/docs/html/T_MimeKit_BodyBuilder.htm) class.
+[BodyBuilder](https://www.mimekit.net/docs/html/T_MimeKit_BodyBuilder.htm) class.
 
 ```csharp
 var message = new MimeMessage ();
@@ -113,11 +127,11 @@ builder.Attachments.Add (@"C:\Users\Joey\Documents\party.ics");
 message.Body = builder.ToMessageBody ();
 ```
 
-For more information, see [Creating Messages](http://www.mimekit.net/docs/html/Creating-Messages.htm).
+For more information, see [Creating Messages](https://www.mimekit.net/docs/html/Creating-Messages.htm).
 
-### <a name="MessageBody">Q: How do I get the main body of a message?</a>
+### <a name="message-body">Q: How do I get the main body of a message?</a>
 
-(Note: for the TL;DR version, skip to [the end](#MessageBodyTLDR))
+(Note: for the TL;DR version, skip to [the end](#message-body-tldr))
 
 MIME is a tree structure of parts. There are multiparts which contain other parts (even other multiparts).
 There are message parts which contain messages. And finally, there are leaf-node parts which contain content.
@@ -179,20 +193,20 @@ There are a few common message structures:
        application/zip
     ```
 
-<a name="MessageBodyTLDR"></a>Now, if you don't care about any of that and just want to get the text of
+<a name="message-body-tldr"></a>Now, if you don't care about any of that and just want to get the text of
 the first `text/plain` or `text/html` part you can find, that's easy.
 
-[MimeMessage](http://www.mimekit.net/docs/html/T_MimeKit_MimeMessage.htm) has two convenience properties
-for this: [TextBody](http://www.mimekit.net/docs/html/P_MimeKit_MimeMessage_TextBody.htm) and
-[HtmlBody](http://www.mimekit.net/docs/html/P_MimeKit_MimeMessage_HtmlBody.htm).
+[MimeMessage](https://www.mimekit.net/docs/html/T_MimeKit_MimeMessage.htm) has two convenience properties
+for this: [TextBody](https://www.mimekit.net/docs/html/P_MimeKit_MimeMessage_TextBody.htm) and
+[HtmlBody](https://www.mimekit.net/docs/html/P_MimeKit_MimeMessage_HtmlBody.htm).
 
 `MimeMessage.HtmlBody`, as the name implies, will traverse the MIME structure for you and find the most
 appropriate body part with a `Content-Type` of `text/html` that can be interpreted as the message body.
 Likewise, the `TextBody` property can be used to get the `text/plain` version of the message body.
 
-For more information, see [Working with Messages](http://www.mimekit.net/docs/html/Working-With-Messages.htm).
+For more information, see [Working with Messages](https://www.mimekit.net/docs/html/Working-With-Messages.htm).
 
-### <a name="HasAttachments">Q: How do I tell if a message has attachments?</a>
+### <a name="has-attachments">Q: How do I tell if a message has attachments?</a>
 
 In most cases, a message with a body that has a MIME-type of `multipart/mixed` containing more than a
 single part probably has attachments. As illustrated above, the first part of a `multipart/mixed` is
@@ -200,7 +214,7 @@ typically the textual body of the message, but it is not always quite that simpl
 
 In general, MIME attachments will have a `Content-Disposition` header with a value of `attachment`.
 To get the list of body parts matching this criteria, you can use the
-[MimeMessage.Attachments](http://www.mimekit.net/docs/html/P_MimeKit_MimeMessage_Attachments.htm) property.
+[MimeMessage.Attachments](https://www.mimekit.net/docs/html/P_MimeKit_MimeMessage_Attachments.htm) property.
 
 Unfortunately, not all mail clients follow this convention and so you may need to write your own custom logic.
 For example, you may wish to treat all body parts having a `name` or `filename` parameter set on them:
@@ -327,15 +341,14 @@ class HtmlPreviewVisitor : MimeVisitor
     }
 
     /// <summary>
-    /// Get a file:// URI for the image attachment.
+    /// Get a data: URI for the image attachment.
     /// </summary>
     /// <remarks>
-    /// Saves the image attachment to a temp file and returns a file:// URI for the
-    /// temp file.
+    /// Encodes the image attachment into a string suitable for setting as a src= attribute value in
+    /// an img tag.
     /// </remarks>
-    /// <returns>The file:// URI.</returns>
+    /// <returns>The data: URI.</returns>
     /// <param name="image">The image attachment.</param>
-    /// <param name="url">The original HTML image URL.</param>
     string GetDataUri (MimePart image)
     {
         using (var memory = new MemoryStream ()) {
@@ -352,27 +365,45 @@ class HtmlPreviewVisitor : MimeVisitor
     // "file://" urls that the browser control will actually be able to load.
     void HtmlTagCallback (HtmlTagContext ctx, HtmlWriter htmlWriter)
     {
-        if (ctx.TagId == HtmlTagId.Image && !ctx.IsEndTag && stack.Count > 0) {
+        if (ctx.TagId == HtmlTagId.Meta && !ctx.IsEndTag) {
+            bool isContentType = false;
+
+            ctx.WriteTag (htmlWriter, false);
+
+            // replace charsets with "utf-8" since our output will be in utf-8 (and not whatever the original charset was)
+            foreach (var attribute in ctx.Attributes) {
+                if (attribute.Id == HtmlAttributeId.Charset) {
+                    htmlWriter.WriteAttributeName (attribute.Name);
+                    htmlWriter.WriteAttributeValue ("utf-8");
+                } else if (isContentType && attribute.Id == HtmlAttributeId.Content) {
+                    htmlWriter.WriteAttributeName (attribute.Name);
+                    htmlWriter.WriteAttributeValue ("text/html; charset=utf-8");
+                } else {
+                    if (attribute.Id == HtmlAttributeId.HttpEquiv && attribute.Value != null
+                        && attribute.Value.Equals ("Content-Type", StringComparison.OrdinalIgnoreCase))
+                        isContentType = true;
+
+                    htmlWriter.WriteAttribute (attribute);
+                }
+            }
+        } else if (ctx.TagId == HtmlTagId.Image && !ctx.IsEndTag && stack.Count > 0) {
             ctx.WriteTag (htmlWriter, false);
 
             // replace the src attribute with a file:// URL
             foreach (var attribute in ctx.Attributes) {
                 if (attribute.Id == HtmlAttributeId.Src) {
-                    MimePart image;
-                    string url;
-
-                    if (!TryGetImage (attribute.Value, out image)) {
+                    if (!TryGetImage (attribute.Value, out var image)) {
                         htmlWriter.WriteAttribute (attribute);
                         continue;
                     }
 
                     // Note: you can either use a "file://" URI or you can use a
                     // "data:" URI, the choice is yours.
-                    url = GetFileUri (image, attribute.Value);
-                    //uri = GetDataUri (image);
+                    var uri = GetFileUri (image, attribute.Value);
+                    //var uri = GetDataUri (image);
 
                     htmlWriter.WriteAttributeName (attribute.Name);
-                    htmlWriter.WriteAttributeValue (url);
+                    htmlWriter.WriteAttributeValue (uri);
                 } else {
                     htmlWriter.WriteAttribute (attribute);
                 }
@@ -382,8 +413,8 @@ class HtmlPreviewVisitor : MimeVisitor
 
             // add and/or replace oncontextmenu="return false;"
             foreach (var attribute in ctx.Attributes) {
-                if (attribute.Name.ToLowerInvariant () == "oncontextmenu")
-                    continue;
+                if (attribute.Name.Equals ("oncontextmenu", StringComparison.OrdinalIgnoreCase))
+                   continue;
 
                 htmlWriter.WriteAttribute (attribute);
             }
@@ -414,8 +445,7 @@ class HtmlPreviewVisitor : MimeVisitor
             string delsp;
 
             if (entity.ContentType.Parameters.TryGetValue ("delsp", out delsp))
-                flowed.DeleteSpace = delsp.ToLowerInvariant () == "yes";
-
+                flowed.DeleteSpace = delsp.Equals ("yes", StringComparison.OrdinalIgnoreCase);
             converter = flowed;
         } else {
             converter = new TextToHtml ();
@@ -466,25 +496,25 @@ Once you've rendered the message using the above technique, you'll have a list o
 were not used, even if they did not match the simplistic criteria used by the `MimeMessage.Attachments`
 property.
 
-### <a name="Serialize">Q: Why doesn't the `MimeMessage` class implement `ISerializable` so that I can serialize a message to disk and read it back later?</a>
+### <a name="serialize-message">Q: Why doesn't the `MimeMessage` class implement `ISerializable` so that I can serialize a message to disk and read it back later?</a>
 
 The MimeKit API was designed to use the existing MIME format for serialization. In light of this, the ability
 to use the .NET serialization API and format did not make much sense to support.
 
-You can easily serialize a [MimeMessage](http://www.mimekit.net/docs/html/T_MimeKit_MimeMessage.htm) to a stream using the
-[WriteTo](http://www.mimekit.net/docs/html/Overload_MimeKit_MimeMessage_WriteTo.htm) methods.
+You can easily serialize a [MimeMessage](https://www.mimekit.net/docs/html/T_MimeKit_MimeMessage.htm) to a stream using the
+[WriteTo](https://www.mimekit.net/docs/html/Overload_MimeKit_MimeMessage_WriteTo.htm) methods.
 
 For more information on this topic, see the following other two topics:
 
-* <a href="#LoadMessages">How do I parse messages?</a>
-* <a href="#SaveMessages">How do I save messages?</a>
+* [How do I parse messages?](#load-messages)
+* [How do I save messages?](#save-messages)
 
-### <a name="LoadMessages">Q: How do I parse messages?</a>
+### <a name="load-messages">Q: How do I parse messages?</a>
 
 One of the more common operations that MimeKit is meant for is parsing email messages from arbitrary streams.
 There are two ways of accomplishing this task.
 
-The first way is to use one of the [Load](http://www.mimekit.net/docs/html/Overload_MimeKit_MimeMessage_Load.htm) methods
+The first way is to use one of the [Load](https://www.mimekit.net/docs/html/Overload_MimeKit_MimeMessage_Load.htm) methods
 on `MimeMessage`:
 
 ```csharp
@@ -499,7 +529,7 @@ Or you can load a message from a file path:
 var message = MimeMessage.Load ("message.eml");
 ```
 
-The second way is to use the [MimeParser](http://www.mimekit.net/docs/html/T_MimeKit_MimeParser.htm) class. For the most
+The second way is to use the [MimeParser](https://www.mimekit.net/docs/html/T_MimeKit_MimeParser.htm) class. For the most
 part, using the `MimeParser` directly is not necessary unless you wish to parse a Unix mbox file stream. However, this is
 how you would do it:
 
@@ -521,10 +551,10 @@ while (!parser.IsEndOfStream) {
 }
 ```
 
-### <a name="SaveMessages">Q: How do I save messages?</a>
+### <a name="save-messages">Q: How do I save messages?</a>
 
-One you've got a [MimeMessage](http://www.mimekit.net/docs/html/T_MimeKit_MimeMessage.htm), you can save
-it to a file using the [WriteTo](http://mimekit.net/docs/html/Overload_MimeKit_MimeMessage_WriteTo.htm) method:
+One you've got a [MimeMessage](https://www.mimekit.net/docs/html/T_MimeKit_MimeMessage.htm), you can save
+it to a file using the [WriteTo](https://mimekit.net/docs/html/Overload_MimeKit_MimeMessage_WriteTo.htm) method:
 
 ```csharp
 message.WriteTo ("message.eml");
@@ -534,7 +564,7 @@ The `WriteTo` method also has overloads that allow you to write the message to a
 
 By default, the `WriteTo` method will save the message using DOS line-endings on Windows and Unix
 line-endings on Unix-based systems such as macOS and Linux. You can override this behavior by
-passing a [FormatOptions](http://mimekit.net/docs/html/T_MimeKit_FormatOptions.htm) argument to
+passing a [FormatOptions](https://mimekit.net/docs/html/T_MimeKit_FormatOptions.htm) argument to
 the method:
 
 ```csharp
@@ -553,9 +583,9 @@ strings due to the fact that each MIME part of the message *may* be encoded in a
 character set, thus making it impossible to convert the message into a unicode string using a
 single charset to do the conversion (which is *exactly* what `ToString` does).
 
-### <a name="SaveAttachments">Q: How do I save attachments?</a>
+### <a name="save-attachments">Q: How do I save attachments?</a>
 
-If you've already got a [MimePart](http://www.mimekit.net/docs/html/T_MimeKit_MimePart.htm) that represents
+If you've already got a [MimePart](https://www.mimekit.net/docs/html/T_MimeKit_MimePart.htm) that represents
 the attachment that you'd like to save, here's how you might save it:
 
 ```csharp
@@ -565,7 +595,7 @@ using (var stream = File.Create (fileName))
 
 Pretty simple, right?
 
-But what if your attachment is actually a [MessagePart](http://www.mimekit.net/docs/html/T_MimeKit_MessagePart.htm)?
+But what if your attachment is actually a [MessagePart](https://www.mimekit.net/docs/html/T_MimeKit_MessagePart.htm)?
 
 To save the content of a `message/rfc822` part, you'd use the following code snippet:
 
@@ -594,28 +624,28 @@ foreach (var attachment in message.Attachments) {
 }
 ```
 
-### <a name="AddressHeaders">Q: How do I get the email addresses in the From, To, and Cc headers?</a>
+### <a name="address-headers">Q: How do I get the email addresses in the From, To, and Cc headers?</a>
 
-The [From](http://www.mimekit.net/docs/html/P_MimeKit_MimeMessage_From.htm), 
-[To](http://www.mimekit.net/docs/html/P_MimeKit_MimeMessage_To.htm), and 
-[Cc](http://www.mimekit.net/docs/html/P_MimeKit_MimeMessage_Cc.htm) properties of a
-[MimeMessage](http://www.mimekit.net/docs/html/T_MimeKit_MimeMessage.htm) are all of type
-[InternetAddressList](http://www.mimekit.net/docs/html/T_MimeKit_InternetAddressList.htm). An
+The [From](https://www.mimekit.net/docs/html/P_MimeKit_MimeMessage_From.htm),
+[To](https://www.mimekit.net/docs/html/P_MimeKit_MimeMessage_To.htm), and
+[Cc](https://www.mimekit.net/docs/html/P_MimeKit_MimeMessage_Cc.htm) properties of a
+[MimeMessage](https://www.mimekit.net/docs/html/T_MimeKit_MimeMessage.htm) are all of type
+[InternetAddressList](https://www.mimekit.net/docs/html/T_MimeKit_InternetAddressList.htm). An
 `InternetAddressList` is a list of
-[InternetAddress](http://www.mimekit.net/docs/html/T_MimeKit_InternetAddress.htm) items. This is
+[InternetAddress](https://www.mimekit.net/docs/html/T_MimeKit_InternetAddress.htm) items. This is
 where most people start to get lost because an `InternetAddress` is an abstract class that only
-really has a [Name](http://www.mimekit.net/docs/html/P_MimeKit_InternetAddress_Name.htm) property.
+really has a [Name](https://www.mimekit.net/docs/html/P_MimeKit_InternetAddress_Name.htm) property.
 
 As you've probably already discovered, the `Name` property contains the name of the person
 (if available), but what you want is his or her email address, not their name.
 
 To get the email address, you'll need to figure out what subclass of address each `InternetAddress`
 really is. There are 2 subclasses of `InternetAddress`:
-[GroupAddress](http://www.mimekit.net/docs/html/T_MimeKit_GroupAddress.htm) and
-[MailboxAddress](http://www.mimekit.net/docs/html/T_MimeKit_MailboxAddress.htm).
+[GroupAddress](https://www.mimekit.net/docs/html/T_MimeKit_GroupAddress.htm) and
+[MailboxAddress](https://www.mimekit.net/docs/html/T_MimeKit_MailboxAddress.htm).
 
 A `GroupAddress` is a named group of more `InternetAddress` items that are contained within the
-[Members](http://www.mimekit.net/docs/html/P_MimeKit_GroupAddress_Members.htm) property. To get
+[Members](https://www.mimekit.net/docs/html/P_MimeKit_GroupAddress_Members.htm) property. To get
 an idea of what a group address represents, consider the following examples:
 
 ```
@@ -636,7 +666,7 @@ To: undisclosed-recipients:;
 
 Most of the time, the `From`, `To`, and `Cc` headers will only contain mailbox addresses. As you will
 notice, a `MailboxAddress` has an
-[Address](http://www.mimekit.net/docs/html/P_MimeKit_MailboxAddress_Address.htm) property which will
+[Address](https://www.mimekit.net/docs/html/P_MimeKit_MailboxAddress_Address.htm) property which will
 contain the email address of the mailbox. In the following example, the `Address` property will
 contain the value `john@smith.com`:
 
@@ -652,7 +682,7 @@ foreach (var mailbox in message.To.Mailboxes)
     Console.WriteLine ("{0}'s email address is {1}", mailbox.Name, mailbox.Address);
 ```
 
-### <a name="UntitledAttachments">Q: Why do attachments with unicode or long filenames appear as "ATT0####.dat" in Outlook?</a>
+### <a name="untitled-attachments">Q: Why do attachments with unicode or long filenames appear as "ATT0####.dat" in Outlook?</a>
 
 An attachment filename is stored as a MIME parameter on the `Content-Disposition` header. Unfortunately,
 the original MIME specifications did not specify a method for encoding non-ASCII filenames. In 1997,
@@ -671,7 +701,7 @@ As of MimeKit v1.2.18, it is possible to configure MimeKit to use the rfc2047 en
 filenames in the following two ways:
 
 The first way is to set the encoding method on each individual
-[Parameter](http://www.mimekit.net/docs/html/T_MimeKit_Parameter.htm):
+[Parameter](https://www.mimekit.net/docs/html/T_MimeKit_Parameter.htm):
 
 ```csharp
 Parameter param;
@@ -688,44 +718,46 @@ foreach (var param in attachment.ContentDisposition.Parameters) {
 }
 ```
 
-### <a name="DecryptInlinePGP">Q: How do I decrypt PGP messages that are embedded in the main message text?</a>
+### <a name="decrypt-inline-pgp">Q: How do I decrypt PGP messages that are embedded in the main message text?</a>
 
 Some PGP-enabled mail clients, such as Thunderbird, embed encrypted PGP blurbs within the `text/plain` body
 of the message rather than using the PGP/MIME format that MimeKit prefers.
 
 These messages often look something like this:
 
-    Return-Path: <pgp-enthusiast@example.com>
-    Received: from [127.0.0.1] (hostname.example.com. [201.95.8.17])
-        by mx.google.com with ESMTPSA id l67sm26628445yha.8.2014.04.27.13.49.44
-        for <pgp-enthusiast@example.com>
-        (version=TLSv1 cipher=ECDHE-RSA-RC4-SHA bits=128/128);
-        Sun, 27 Apr 2014 13:49:44 -0700 (PDT)
-    Message-ID: <535D6D67.8020803@example.com>
-    Date: Sun, 27 Apr 2014 17:49:43 -0300
-    From: Die-Hard PGP Fan <pgp-enthusiast@example.com>
-    User-Agent: Mozilla/5.0 (Windows NT 6.3; WOW64; rv:24.0) Gecko/20100101 Thunderbird/24.4.0
-    MIME-Version: 1.0
-    To: undisclosed-recipients:;
-    Subject: Test of inline encrypted PGP blocks
-    X-Enigmail-Version: 1.6
-    Content-Type: text/plain; charset=ISO-8859-1
-    Content-Transfer-Encoding: 8bit
-    X-Antivirus: avast! (VPS 140427-1, 27/04/2014), Outbound message
-    X-Antivirus-Status: Clean
-    
-    -----BEGIN PGP MESSAGE-----
-    Charset: ISO-8859-1
-    Version: GnuPG v2.0.22 (MingW32)
-    Comment: Using GnuPG with Thunderbird - http://www.enigmail.net/
-    
-    SGFoISBJIGZvb2xlZCB5b3UsIHRoaXMgdGV4dCBpc24ndCBhY3R1YWxseSBlbmNy
-    eXB0ZWQgd2l0aCBQR1AsCml0J3MgYWN0dWFsbHkgb25seSBiYXNlNjQgZW5jb2Rl
-    ZCEKCkknbSBqdXN0IHVzaW5nIHRoaXMgYXMgYW4gZXhhbXBsZSwgdGhvdWdoLCBz
-    byBpdCBkb2Vzbid0IHJlYWxseSBtYXR0ZXIuCgpGb3IgdGhlIHNha2Ugb2YgYXJn
-    dW1lbnQsIHdlJ2xsIHByZXRlbmQgdGhhdCB0aGlzIGlzIGFjdHVhbGx5IGFuIGVu
-    Y3J5cHRlZApibHVyYi4gTW1ta2F5PyBUaGFua3MuCg==
-    -----END PGP MESSAGE-----
+```text
+Return-Path: <pgp-enthusiast@example.com>
+Received: from [127.0.0.1] (hostname.example.com. [201.95.8.17])
+    by mx.google.com with ESMTPSA id l67sm26628445yha.8.2014.04.27.13.49.44
+    for <pgp-enthusiast@example.com>
+    (version=TLSv1 cipher=ECDHE-RSA-RC4-SHA bits=128/128);
+    Sun, 27 Apr 2014 13:49:44 -0700 (PDT)
+Message-ID: <535D6D67.8020803@example.com>
+Date: Sun, 27 Apr 2014 17:49:43 -0300
+From: Die-Hard PGP Fan <pgp-enthusiast@example.com>
+User-Agent: Mozilla/5.0 (Windows NT 6.3; WOW64; rv:24.0) Gecko/20100101 Thunderbird/24.4.0
+MIME-Version: 1.0
+To: undisclosed-recipients:;
+Subject: Test of inline encrypted PGP blocks
+X-Enigmail-Version: 1.6
+Content-Type: text/plain; charset=ISO-8859-1
+Content-Transfer-Encoding: 8bit
+X-Antivirus: avast! (VPS 140427-1, 27/04/2014), Outbound message
+X-Antivirus-Status: Clean
+
+-----BEGIN PGP MESSAGE-----
+Charset: ISO-8859-1
+Version: GnuPG v2.0.22 (MingW32)
+Comment: Using GnuPG with Thunderbird - http://www.enigmail.net/
+
+SGFoISBJIGZvb2xlZCB5b3UsIHRoaXMgdGV4dCBpc24ndCBhY3R1YWxseSBlbmNy
+eXB0ZWQgd2l0aCBQR1AsCml0J3MgYWN0dWFsbHkgb25seSBiYXNlNjQgZW5jb2Rl
+ZCEKCkknbSBqdXN0IHVzaW5nIHRoaXMgYXMgYW4gZXhhbXBsZSwgdGhvdWdoLCBz
+byBpdCBkb2Vzbid0IHJlYWxseSBtYXR0ZXIuCgpGb3IgdGhlIHNha2Ugb2YgYXJn
+dW1lbnQsIHdlJ2xsIHByZXRlbmQgdGhhdCB0aGlzIGlzIGFjdHVhbGx5IGFuIGVu
+Y3J5cHRlZApibHVyYi4gTW1ta2F5PyBUaGFua3MuCg==
+-----END PGP MESSAGE-----
+```
 
 To deal with these kinds of messages, I've added a method to OpenPgpContext called `GetDecryptedStream` which
 can be used to get the raw decrypted stream.
@@ -745,11 +777,11 @@ public Stream GetDecryptedStream (Stream encryptedData)
 The first variant is useful in cases where the encrypted PGP blurb is also digitally signed, allowing you to get
 your hands on the list of digitial signatures in order for you to verify each of them.
 
-To decrypt the content of the message, you'll want to locate the `TextPart` (in this case, it'll just be 
+To decrypt the content of the message, you'll want to locate the `TextPart` (in this case, it'll just be
 `message.Body`)
 and then do this:
 
-```
+```csharp
 static Stream DecryptEmbeddedPgp (TextPart text)
 {
     using (var memory = new MemoryStream ()) {
@@ -766,7 +798,7 @@ static Stream DecryptEmbeddedPgp (TextPart text)
 What you do with that decrypted stream is up to you. It's up to you to figure out what the decrypted content is
 (is it text? a jpeg image? a video?) and how to display it to the user.
 
-### <a name="Reply">Q: How do I reply to a message?</a>
+### <a name="reply-message">Q: How do I reply to a message?</a>
 
 Replying to a message is fairly simple. For the most part, you'd just create the reply message
 the same way you'd create any other message. There are only a few slight differences:
@@ -786,59 +818,59 @@ If this logic were to be expressed in code, it might look something like this:
 ```csharp
 public static MimeMessage Reply (MimeMessage message, MailboxAddress from, bool replyToAll)
 {
-	var reply = new MimeMessage ();
+    var reply = new MimeMessage ();
 
-	reply.From.Add (from);
+    reply.From.Add (from);
 
-	// reply to the sender of the message
-	if (message.ReplyTo.Count > 0) {
-		reply.To.AddRange (message.ReplyTo);
-	} else if (message.From.Count > 0) {
-		reply.To.AddRange (message.From);
-	} else if (message.Sender != null) {
-		reply.To.Add (message.Sender);
-	}
+    // reply to the sender of the message
+    if (message.ReplyTo.Count > 0) {
+        reply.To.AddRange (message.ReplyTo);
+    } else if (message.From.Count > 0) {
+        reply.To.AddRange (message.From);
+    } else if (message.Sender != null) {
+        reply.To.Add (message.Sender);
+    }
 
-	if (replyToAll) {
-		// include all of the other original recipients - TODO: remove ourselves from these lists
-		reply.To.AddRange (message.To);
-		reply.Cc.AddRange (message.Cc);
-	}
+    if (replyToAll) {
+        // include all of the other original recipients - TODO: remove ourselves from these lists
+        reply.To.AddRange (message.To);
+        reply.Cc.AddRange (message.Cc);
+    }
 
-	// set the reply subject
-	if (!message.Subject.StartsWith ("Re:", StringComparison.OrdinalIgnoreCase))
-		reply.Subject = "Re: " + message.Subject;
-	else
-		reply.Subject = message.Subject;
+    // set the reply subject
+    if (!message.Subject?.StartsWith ("Re:", StringComparison.OrdinalIgnoreCase))
+        reply.Subject = "Re: " + (message.Subject ?? string.Empty);
+    else
+        reply.Subject = message.Subject;
 
-	// construct the In-Reply-To and References headers
-	if (!string.IsNullOrEmpty (message.MessageId)) {
-		reply.InReplyTo = message.MessageId;
-		foreach (var id in message.References)
-			reply.References.Add (id);
-		reply.References.Add (message.MessageId);
-	}
+    // construct the In-Reply-To and References headers
+    if (!string.IsNullOrEmpty (message.MessageId)) {
+        reply.InReplyTo = message.MessageId;
+        foreach (var id in message.References)
+            reply.References.Add (id);
+        reply.References.Add (message.MessageId);
+    }
 
-	// quote the original message text
-	using (var quoted = new StringWriter ()) {
-		var sender = message.Sender ?? message.From.Mailboxes.FirstOrDefault ();
+    // quote the original message text
+    using (var quoted = new StringWriter ()) {
+        var sender = message.Sender ?? message.From.Mailboxes.FirstOrDefault ();
 
-		quoted.WriteLine ("On {0}, {1} wrote:", message.Date.ToString ("f"), !string.IsNullOrEmpty (sender.Name) ? sender.Name : sender.Address);
-		using (var reader = new StringReader (message.TextBody)) {
-			string line;
+        quoted.WriteLine ("On {0}, {1} wrote:", message.Date.ToString ("f"), !string.IsNullOrEmpty (sender.Name) ? sender.Name : sender.Address);
+        using (var reader = new StringReader (message.TextBody)) {
+            string line;
 
-			while ((line = reader.ReadLine ()) != null) {
-				quoted.Write ("> ");
-				quoted.WriteLine (line);
-			}
-		}
+            while ((line = reader.ReadLine ()) != null) {
+                quoted.Write ("> ");
+                quoted.WriteLine (line);
+            }
+        }
 
-		reply.Body = new TextPart ("plain") {
-			Text = quoted.ToString ()
-		};
-	}
+        reply.Body = new TextPart ("plain") {
+            Text = quoted.ToString ()
+        };
+    }
 
-	return reply;
+    return reply;
 }
 ```
 
@@ -848,253 +880,253 @@ body (assuming it has an HTML body) while still including the embedded images?
 This gets a bit more complicated, but it's still doable...
 
 The first thing we'd need to do is implement our own
-[MimeVisitor](http://www.mimekit.net/docs/html/T_MimeKit_MimeVisitor.htm) to handle this:
+[MimeVisitor](https://www.mimekit.net/docs/html/T_MimeKit_MimeVisitor.htm) to handle this:
 
 ```csharp
 public class ReplyVisitor : MimeVisitor
 {
-	readonly Stack<Multipart> stack = new Stack<Multipart> ();
-	MimeMessage original, reply;
-	MailboxAddress from;
-	bool replyToAll;
+    readonly Stack<Multipart> stack = new Stack<Multipart> ();
+    MimeMessage original, reply;
+    MailboxAddress from;
+    bool replyToAll;
 
-	/// <summary>
-	/// Creates a new ReplyVisitor.
-	/// </summary>
-	public ReplyVisitor (MailboxAddress from, bool replyToAll)
-	{
-		this.replyToAll = replyToAll;
-		this.from = from;
-	}
+    /// <summary>
+    /// Creates a new ReplyVisitor.
+    /// </summary>
+    public ReplyVisitor (MailboxAddress from, bool replyToAll)
+    {
+        this.replyToAll = replyToAll;
+        this.from = from;
+    }
 
-	/// <summary>
-	/// Gets the reply.
-	/// </summary>
-	/// <value>The reply.</value>
-	public MimeMessage Reply {
-		get { return reply; }
-	}
+    /// <summary>
+    /// Gets the reply.
+    /// </summary>
+    /// <value>The reply.</value>
+    public MimeMessage Reply {
+        get { return reply; }
+    }
 
-	void Push (MimeEntity entity)
-	{
-		var multipart = entity as Multipart;
+    void Push (MimeEntity entity)
+    {
+        var multipart = entity as Multipart;
 
-		if (reply.Body == null) {
-			reply.Body = entity;
-		} else {
-			var parent = stack.Peek ();
-			parent.Add (entity);
-		}
+        if (reply.Body == null) {
+            reply.Body = entity;
+        } else {
+            var parent = stack.Peek ();
+            parent.Add (entity);
+        }
 
-		if (multipart != null)
-			stack.Push (multipart);
-	}
+        if (multipart != null)
+            stack.Push (multipart);
+    }
 
-	void Pop ()
-	{
-		stack.Pop ();
-	}
+    void Pop ()
+    {
+        stack.Pop ();
+    }
 
-	static string GetOnDateSenderWrote (MimeMessage message)
-	{
-		var sender = message.Sender != null ? message.Sender : message.From.Mailboxes.FirstOrDefault ();
-		var name = sender != null ? (!string.IsNullOrEmpty (sender.Name) ? sender.Name : sender.Address) : "an unknown sender";
+    static string GetOnDateSenderWrote (MimeMessage message)
+    {
+        var sender = message.Sender != null ? message.Sender : message.From.Mailboxes.FirstOrDefault ();
+        var name = sender != null ? (!string.IsNullOrEmpty (sender.Name) ? sender.Name : sender.Address) : "an unknown sender";
 
-		return string.Format ("On {0}, {1} wrote:", message.Date.ToString ("f"), name);
-	}
+        return string.Format ("On {0}, {1} wrote:", message.Date.ToString ("f"), name);
+    }
 
-	/// <summary>
-	/// Visit the specified message.
-	/// </summary>
-	/// <param name="message">The message.</param>
-	public override void Visit (MimeMessage message)
-	{
-		reply = new MimeMessage ();
-		original = message;
+    /// <summary>
+    /// Visit the specified message.
+    /// </summary>
+    /// <param name="message">The message.</param>
+    public override void Visit (MimeMessage message)
+    {
+        reply = new MimeMessage ();
+        original = message;
 
-		stack.Clear ();
+        stack.Clear ();
 
-		reply.From.Add (from.Clone ());
+        reply.From.Add (from.Clone ());
 
-		// reply to the sender of the message
-		if (message.ReplyTo.Count > 0) {
-			reply.To.AddRange (message.ReplyTo);
-		} else if (message.From.Count > 0) {
-			reply.To.AddRange (message.From);
-		} else if (message.Sender != null) {
-			reply.To.Add (message.Sender);
-		}
+        // reply to the sender of the message
+        if (message.ReplyTo.Count > 0) {
+            reply.To.AddRange (message.ReplyTo);
+        } else if (message.From.Count > 0) {
+            reply.To.AddRange (message.From);
+        } else if (message.Sender != null) {
+            reply.To.Add (message.Sender);
+        }
 
-		if (replyToAll) {
-			// include all of the other original recipients - TODO: remove ourselves from these lists
-			reply.To.AddRange (message.To);
-			reply.Cc.AddRange (message.Cc);
-		}
+        if (replyToAll) {
+            // include all of the other original recipients - TODO: remove ourselves from these lists
+            reply.To.AddRange (message.To);
+            reply.Cc.AddRange (message.Cc);
+        }
 
-		// set the reply subject
-		if (!message.Subject.StartsWith ("Re:", StringComparison.OrdinalIgnoreCase))
-			reply.Subject = "Re: " + message.Subject;
-		else
-			reply.Subject = message.Subject;
+        // set the reply subject
+        if (!message.Subject?.StartsWith ("Re:", StringComparison.OrdinalIgnoreCase))
+            reply.Subject = "Re: " + (message.Subject ?? string.Empty);
+        else
+            reply.Subject = message.Subject;
 
-		// construct the In-Reply-To and References headers
-		if (!string.IsNullOrEmpty (message.MessageId)) {
-			reply.InReplyTo = message.MessageId;
-			foreach (var id in message.References)
-				reply.References.Add (id);
-			reply.References.Add (message.MessageId);
-		}
+        // construct the In-Reply-To and References headers
+        if (!string.IsNullOrEmpty (message.MessageId)) {
+            reply.InReplyTo = message.MessageId;
+            foreach (var id in message.References)
+                reply.References.Add (id);
+            reply.References.Add (message.MessageId);
+        }
 
-		base.Visit (message);
-	}
+        base.Visit (message);
+    }
 
-	/// <summary>
-	/// Visit the specified entity.
-	/// </summary>
-	/// <param name="entity">The MIME entity.</param>
-	/// <exception cref="System.NotSupportedException">
-	/// Only Visit(MimeMessage) is supported.
-	/// </exception>
-	public override void Visit (MimeEntity entity)
-	{
-		throw new NotSupportedException ();
-	}
+    /// <summary>
+    /// Visit the specified entity.
+    /// </summary>
+    /// <param name="entity">The MIME entity.</param>
+    /// <exception cref="System.NotSupportedException">
+    /// Only Visit(MimeMessage) is supported.
+    /// </exception>
+    public override void Visit (MimeEntity entity)
+    {
+        throw new NotSupportedException ();
+    }
 
-	protected override void VisitMultipartAlternative (MultipartAlternative alternative)
-	{
-		var multipart = new MultipartAlternative ();
+    protected override void VisitMultipartAlternative (MultipartAlternative alternative)
+    {
+        var multipart = new MultipartAlternative ();
 
-		Push (multipart);
+        Push (multipart);
 
-		for (int i = 0; i < alternative.Count; i++)
-			alternative[i].Accept (this);
+        for (int i = 0; i < alternative.Count; i++)
+            alternative[i].Accept (this);
 
-		Pop ();
-	}
+        Pop ();
+    }
 
-	protected override void VisitMultipartRelated (MultipartRelated related)
-	{
-		var multipart = new MultipartRelated ();
-		var root = related.Root;
+    protected override void VisitMultipartRelated (MultipartRelated related)
+    {
+        var multipart = new MultipartRelated ();
+        var root = related.Root;
 
-		Push (multipart);
+        Push (multipart);
 
-		root.Accept (this);
+        root.Accept (this);
 
-		for (int i = 0; i < related.Count; i++) {
-			if (related[i] != root)
-				related[i].Accept (this);
-		}
+        for (int i = 0; i < related.Count; i++) {
+            if (related[i] != root)
+                related[i].Accept (this);
+        }
 
-		Pop ();
-	}
+        Pop ();
+    }
 
-	protected override void VisitMultipart (Multipart multipart)
-	{
-		foreach (var part in multipart) {
-			if (part is MultipartAlternative)
-				part.Accept (this);
-			else if (part is MultipartRelated)
-				part.Accept (this);
-			else if (part is TextPart)
-				part.Accept (this);
-		}
-	}
+    protected override void VisitMultipart (Multipart multipart)
+    {
+        foreach (var part in multipart) {
+            if (part is MultipartAlternative)
+                part.Accept (this);
+            else if (part is MultipartRelated)
+                part.Accept (this);
+            else if (part is TextPart)
+                part.Accept (this);
+        }
+    }
 
-	void HtmlTagCallback (HtmlTagContext ctx, HtmlWriter htmlWriter)
-	{
-		if (ctx.TagId == HtmlTagId.Body && !ctx.IsEmptyElementTag) {
-			if (ctx.IsEndTag) {
-				// end our opening <blockquote>
-				htmlWriter.WriteEndTag (HtmlTagId.BlockQuote);
+    void HtmlTagCallback (HtmlTagContext ctx, HtmlWriter htmlWriter)
+    {
+        if (ctx.TagId == HtmlTagId.Body && !ctx.IsEmptyElementTag) {
+            if (ctx.IsEndTag) {
+                // end our opening <blockquote>
+                htmlWriter.WriteEndTag (HtmlTagId.BlockQuote);
 
-				// pass the </body> tag through to the output
-				ctx.WriteTag (htmlWriter, true);
-			} else {
-				// pass the <body> tag through to the output
-				ctx.WriteTag (htmlWriter, true);
+                // pass the </body> tag through to the output
+                ctx.WriteTag (htmlWriter, true);
+            } else {
+                // pass the <body> tag through to the output
+                ctx.WriteTag (htmlWriter, true);
 
-				// prepend the HTML reply with "On {DATE}, {SENDER} wrote:"
-				htmlWriter.WriteStartTag (HtmlTagId.P);
-				htmlWriter.WriteText (GetOnDateSenderWrote (original));
-				htmlWriter.WriteEndTag (HtmlTagId.P);
+                // prepend the HTML reply with "On {DATE}, {SENDER} wrote:"
+                htmlWriter.WriteStartTag (HtmlTagId.P);
+                htmlWriter.WriteText (GetOnDateSenderWrote (original));
+                htmlWriter.WriteEndTag (HtmlTagId.P);
 
-				// Wrap the original content in a <blockquote>
-				htmlWriter.WriteStartTag (HtmlTagId.BlockQuote);
-				htmlWriter.WriteAttribute (HtmlAttributeId.Style, "border-left: 1px #ccc solid; margin: 0 0 0 .8ex; padding-left: 1ex;");
+                // Wrap the original content in a <blockquote>
+                htmlWriter.WriteStartTag (HtmlTagId.BlockQuote);
+                htmlWriter.WriteAttribute (HtmlAttributeId.Style, "border-left: 1px #ccc solid; margin: 0 0 0 .8ex; padding-left: 1ex;");
 
-				ctx.InvokeCallbackForEndTag = true;
-			}
-		} else {
-			// pass the tag through to the output
-			ctx.WriteTag (htmlWriter, true);
-		}
-	}
+                ctx.InvokeCallbackForEndTag = true;
+            }
+        } else {
+            // pass the tag through to the output
+            ctx.WriteTag (htmlWriter, true);
+        }
+    }
 
-	string QuoteText (string text)
-	{
-		using (var quoted = new StringWriter ()) {
-			quoted.WriteLine (GetOnDateSenderWrote (original));
+    string QuoteText (string text)
+    {
+        using (var quoted = new StringWriter ()) {
+            quoted.WriteLine (GetOnDateSenderWrote (original));
 
-			using (var reader = new StringReader (text)) {
-				string line;
+            using (var reader = new StringReader (text)) {
+                string line;
 
-				while ((line = reader.ReadLine ()) != null) {
-					quoted.Write ("> ");
-					quoted.WriteLine (line);
-				}
-			}
+                while ((line = reader.ReadLine ()) != null) {
+                    quoted.Write ("> ");
+                    quoted.WriteLine (line);
+                }
+            }
 
-			return quoted.ToString ();
-		}
-	}
+            return quoted.ToString ();
+        }
+    }
 
-	protected override void VisitTextPart (TextPart entity)
-	{
-		string text;
+    protected override void VisitTextPart (TextPart entity)
+    {
+        string text;
 
-		if (entity.IsHtml) {
-			var converter = new HtmlToHtml {
-				HtmlTagCallback = HtmlTagCallback
-			};
+        if (entity.IsHtml) {
+            var converter = new HtmlToHtml {
+                HtmlTagCallback = HtmlTagCallback
+            };
 
-			text = converter.Convert (entity.Text);
-		} else if (entity.IsFlowed) {
-			var converter = new FlowedToText ();
+            text = converter.Convert (entity.Text);
+        } else if (entity.IsFlowed) {
+            var converter = new FlowedToText ();
 
-			text = converter.Convert (entity.Text);
-			text = QuoteText (text);
-		} else {
-			// quote the original message text
-			text = QuoteText (entity.Text);
-		}
+            text = converter.Convert (entity.Text);
+            text = QuoteText (text);
+        } else {
+            // quote the original message text
+            text = QuoteText (entity.Text);
+        }
 
-		var part = new TextPart (entity.ContentType.MediaSubtype.ToLowerInvariant ()) {
-			Text = text
-		};
+        var part = new TextPart (entity.ContentType.MediaSubtype.ToLowerInvariant ()) {
+            Text = text
+        };
 
-		Push (part);
-	}
+        Push (part);
+    }
 
-	protected override void VisitMessagePart (MessagePart entity)
-	{
-		// don't descend into message/rfc822 parts
-	}
+    protected override void VisitMessagePart (MessagePart entity)
+    {
+        // don't descend into message/rfc822 parts
+    }
 }
 ```
 
 ```csharp
 public static MimeMessage Reply (MimeMessage message, MailboxAddress from, bool replyToAll)
 {
-	var visitor = new ReplyVisitor (from, replyToAll);
+    var visitor = new ReplyVisitor (from, replyToAll);
 
-	visitor.Visit (message);
+    visitor.Visit (message);
 
-	return visitor.Reply;
+    return visitor.Reply;
 }
 ```
 
-### <a name="Forward">Q: How do I forward a message?</a>
+### <a name="forward-message">Q: How do I forward a message?</a>
 
 There are 2 common ways of forwarding a message: attaching the original message as an attachment and inlining
 the message body much like replying typically does. Which method you choose is up to you.
@@ -1104,31 +1136,31 @@ To forward a message by attaching it as an attachment, you would do do something
 ```csharp
 public static MimeMessage Forward (MimeMessage original, MailboxAddress from, IEnumerable<InternetAddress> to)
 {
-	var message = new MimeMessage ();
-	message.From.Add (from);
-	message.To.AddRange (to);
+    var message = new MimeMessage ();
+    message.From.Add (from);
+    message.To.AddRange (to);
 
-	// set the forwarded subject
-	if (!original.Subject.StartsWith ("FW:", StringComparison.OrdinalIgnoreCase))
-		message.Subject = "FW: " + original.Subject;
-	else
-		message.Subject = original.Subject;
+    // set the forwarded subject
+    if (!original.Subject?.StartsWith ("FW:", StringComparison.OrdinalIgnoreCase))
+        message.Subject = "FW: " + (original.Subject ?? string.Empty);
+    else
+        message.Subject = original.Subject;
 
-	// create the main textual body of the message
-	var text = new TextPart ("plain") { Text = "Here's the forwarded message:" };
+    // create the main textual body of the message
+    var text = new TextPart ("plain") { Text = "Here's the forwarded message:" };
 
-	// create the message/rfc822 attachment for the original message
-	var rfc822 = new MessagePart { Message = original };
+    // create the message/rfc822 attachment for the original message
+    var rfc822 = new MessagePart { Message = original };
     
-	// create a multipart/mixed container for the text body and the forwarded message
-	var multipart = new Multipart ("mixed");
-	multipart.Add (text);
-	multipart.Add (rfc822);
+    // create a multipart/mixed container for the text body and the forwarded message
+    var multipart = new Multipart ("mixed");
+    multipart.Add (text);
+    multipart.Add (rfc822);
 
-	// set the multipart as the body of the message
-	message.Body = multipart;
+    // set the multipart as the body of the message
+    message.Body = multipart;
 
-	return message;
+    return message;
 }
 ```
 
@@ -1137,43 +1169,58 @@ To forward a message by inlining the original message's text content, you can do
 ```csharp
 public static MimeMessage Forward (MimeMessage original, MailboxAddress from, IEnumerable<InternetAddress> to)
 {
-	var message = new MimeMessage ();
-	message.From.Add (from);
-	message.To.AddRange (to);
+    var message = new MimeMessage ();
+    message.From.Add (from);
+    message.To.AddRange (to);
 
-	// set the forwarded subject
-	if (!original.Subject.StartsWith ("FW:", StringComparison.OrdinalIgnoreCase))
-		message.Subject = "FW: " + original.Subject;
-	else
-		message.Subject = original.Subject;
+    // set the forwarded subject
+    if (!original.Subject?.StartsWith ("FW:", StringComparison.OrdinalIgnoreCase))
+        message.Subject = "FW: " + (original.Subject ?? string.Empty);
+    else
+        message.Subject = original.Subject;
 
-	// quote the original message text
-	using (var text = new StringWriter ()) {
-		text.WriteLine ();
-		text.WriteLine ("-------- Original Message --------");
-		text.WriteLine ("Subject: {0}", original.Subject);
-		text.WriteLine ("Date: {0}", DateUtils.FormatDate (original.Date));
-		text.WriteLine ("From: {0}", original.From);
-		text.WriteLine ("To: {0}", original.To);
-		text.WriteLine ();
-		
-		text.Write (original.TextBody);
+    // quote the original message text
+    using (var text = new StringWriter ()) {
+        text.WriteLine ();
+        text.WriteLine ("-------- Original Message --------");
+        text.WriteLine ("Subject: {0}", original.Subject ?? string.Empty);
+        text.WriteLine ("Date: {0}", DateUtils.FormatDate (original.Date));
+        text.WriteLine ("From: {0}", original.From);
+        text.WriteLine ("To: {0}", original.To);
+        text.WriteLine ();
 
-		message.Body = new TextPart ("plain") {
-			Text = text.ToString ()
-		};
-	}
+        text.Write (original.TextBody);
 
-	return message;
+        message.Body = new TextPart ("plain") {
+            Text = text.ToString ()
+        };
+    }
+
+    return message;
 }
 ```
 
 Keep in mind that not all messages will have a `TextBody` available, so you'll have to find a way to handle those cases.
 
+### <a name="garbled-text">Q: Why does text show up garbled in my ASP.NET Core / .NET Core / .NET 5 app?</a>
+
+.NET Core (and ASP.NET Core by extension) and .NET >= 5 only provide the Unicode encodings, ASCII and ISO-8859-1 by default.
+Other text encodings are not available to your application unless your application
+[registers](https://docs.microsoft.com/en-us/dotnet/api/system.text.encoding.registerprovider?view=net-5.0) the encoding
+provider that provides all of the additional encodings.
+
+First, add a package reference for the [System.Text.Encoding.CodePages](https://www.nuget.org/packages/System.Text.Encoding.CodePages)
+nuget package to your project and then register the additional text encodings using the following code snippet:
+
+```csharp
+System.Text.Encoding.RegisterProvider (System.Text.CodePagesEncodingProvider.Instance);
+```
+
+Note: The above code snippet should be safe to call in .NET Framework versions >= 4.6 as well.
 
 ## Specialty
 
-### <a name="ParseWebRequestFormData">Q: How would I parse multipart/form-data from an HTTP web request?</a>
+### <a name="parse-web-request-form-data">Q: How would I parse multipart/form-data from an HTTP web request?</a>
 
 Since classes like `HttpWebResponse` take care of parsing the HTTP headers (which includes the `Content-Type`
 header) and only offer a content stream to consume, MimeKit provides a way to deal with this using the following

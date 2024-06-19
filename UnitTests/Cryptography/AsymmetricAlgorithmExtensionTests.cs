@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,10 +24,7 @@
 // THE SOFTWARE.
 //
 
-using System;
 using System.Security.Cryptography;
-
-using NUnit.Framework;
 
 using Org.BouncyCastle.Math;
 using Org.BouncyCastle.Crypto;
@@ -35,8 +32,7 @@ using Org.BouncyCastle.Crypto.Parameters;
 
 using MimeKit.Cryptography;
 
-namespace UnitTests.Cryptography
-{
+namespace UnitTests.Cryptography {
 	[TestFixture]
 	public class AsymmetricAlgorithmExtensionTests
 	{
@@ -53,17 +49,17 @@ namespace UnitTests.Cryptography
 		static void AssertAreEqual (byte[] expected, byte[] actual, string paramName)
 		{
 			if (expected == null) {
-				Assert.IsNull (actual, paramName);
+				Assert.That (actual, Is.Null, paramName);
 				return;
 			}
 
-			Assert.IsNotNull (actual, paramName);
-			Assert.AreEqual (expected.Length, actual.Length, "Lengths do not match: {0}", paramName);
+			Assert.That (actual, Is.Not.Null, paramName);
+			Assert.That (actual.Length, Is.EqualTo (expected.Length), $"Lengths do not match: {paramName}");
 
 			var expectedBigInteger = new BigInteger (1, expected);
 			var actualBigInteger = new BigInteger (1, actual);
 
-			Assert.AreEqual (expectedBigInteger, actualBigInteger, "{0} are not equal", paramName);
+			Assert.That (actualBigInteger, Is.EqualTo (expectedBigInteger), $"{paramName} are not equal");
 		}
 
 		static void AssertDSA (DSA dsa)
@@ -83,7 +79,7 @@ namespace UnitTests.Cryptography
 
 			var actual = asymmetricAlgorithm.ExportParameters (true);
 
-			Assert.AreEqual (expected.Counter, actual.Counter, "Counter");
+			Assert.That (actual.Counter, Is.EqualTo (expected.Counter), "Counter");
 			AssertAreEqual (expected.Seed, actual.Seed, "Seed");
 			AssertAreEqual (expected.G, actual.G, "G");
 			AssertAreEqual (expected.P, actual.P, "P");
@@ -96,7 +92,7 @@ namespace UnitTests.Cryptography
 			asymmetricAlgorithm = keyPair.AsAsymmetricAlgorithm () as DSA;
 			actual = asymmetricAlgorithm.ExportParameters (true);
 
-			Assert.AreEqual (expected.Counter, actual.Counter, "Counter");
+			Assert.That (actual.Counter, Is.EqualTo (expected.Counter), "Counter");
 			AssertAreEqual (expected.Seed, actual.Seed, "Seed");
 			AssertAreEqual (expected.G, actual.G, "G");
 			AssertAreEqual (expected.P, actual.P, "P");
@@ -113,7 +109,7 @@ namespace UnitTests.Cryptography
 			asymmetricAlgorithm = keyParameter.AsAsymmetricAlgorithm () as DSA;
 			actual = asymmetricAlgorithm.ExportParameters (false);
 
-			Assert.AreEqual (expected.Counter, actual.Counter, "Counter");
+			Assert.That (actual.Counter, Is.EqualTo (expected.Counter), "Counter");
 			AssertAreEqual (expected.Seed, actual.Seed, "Seed");
 			AssertAreEqual (expected.G, actual.G, "G");
 			AssertAreEqual (expected.P, actual.P, "P");
@@ -132,7 +128,7 @@ namespace UnitTests.Cryptography
 		[Test]
 		public void TestDSACng ()
 		{
-#if !MONO
+#if !MONO && ENABLE_DSA_CNG
 			using (var dsa = new DSACng (1024))
 				AssertDSA (dsa);
 #else
@@ -200,7 +196,7 @@ namespace UnitTests.Cryptography
 		[Test]
 		public void TestRSACng ()
 		{
-#if !MONO
+#if !MONO && ENABLE_RSA_CNG
 			using (var rsa = new RSACng (1024))
 				AssertRSA (rsa);
 #else

@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -52,8 +52,7 @@ namespace MimeKit {
 		/// <param name="entity">The MIME entity.</param>
 		public virtual void Visit (MimeEntity entity)
 		{
-			if (entity != null)
-				entity.Accept (this);
+			entity?.Accept (this);
 		}
 
 		/// <summary>
@@ -65,8 +64,7 @@ namespace MimeKit {
 		/// <param name="message">The MIME message.</param>
 		public virtual void Visit (MimeMessage message)
 		{
-			if (message != null)
-				message.Accept (this);
+			message?.Accept (this);
 		}
 
 #if ENABLE_CRYPTO
@@ -147,6 +145,18 @@ namespace MimeKit {
 		}
 
 		/// <summary>
+		/// Visit the message/feedback-report MIME entity.
+		/// </summary>
+		/// <remarks>
+		/// Visits the message/feedback-report MIME entity.
+		/// </remarks>
+		/// <param name="entity">The message/feedback-report MIME entity.</param>
+		protected internal virtual void VisitMessageFeedbackReport (MessageFeedbackReport entity)
+		{
+			VisitMimePart (entity);
+		}
+
+		/// <summary>
 		/// Visit the message contained within a message/rfc822 or message/news MIME entity.
 		/// </summary>
 		/// <remarks>
@@ -155,8 +165,7 @@ namespace MimeKit {
 		/// <param name="entity">The message/rfc822 or message/news MIME entity.</param>
 		protected virtual void VisitMessage (MessagePart entity)
 		{
-			if (entity.Message != null)
-				entity.Message.Accept (this);
+			entity.Message?.Accept (this);
 		}
 
 		/// <summary>
@@ -207,8 +216,7 @@ namespace MimeKit {
 		/// <param name="message">The message.</param>
 		protected virtual void VisitBody (MimeMessage message)
 		{
-			if (message.Body != null)
-				message.Body.Accept (this);
+			message.Body?.Accept (this);
 		}
 
 		/// <summary>

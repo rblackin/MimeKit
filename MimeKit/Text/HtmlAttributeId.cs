@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -25,8 +25,6 @@
 //
 
 using System;
-using System.Linq;
-using System.Reflection;
 using System.Collections.Generic;
 
 using MimeKit.Utils;
@@ -57,7 +55,6 @@ namespace MimeKit.Text {
 		/// <summary>
 		/// The "accept-charset" attribute.
 		/// </summary>
-		[HtmlAttributeName ("accept-charset")]
 		AcceptCharset,
 
 		/// <summary>
@@ -293,7 +290,6 @@ namespace MimeKit.Text {
 		/// <summary>
 		/// The "http-equiv" attribute.
 		/// </summary>
-		[HtmlAttributeName ("http-equiv")]
 		HttpEquiv,
 
 		/// <summary>
@@ -577,18 +573,6 @@ namespace MimeKit.Text {
 		XmlNS
 	}
 
-	[AttributeUsage (AttributeTargets.Field)]
-	class HtmlAttributeNameAttribute : Attribute {
-		public HtmlAttributeNameAttribute (string name)
-		{
-			Name = name;
-		}
-
-		public string Name {
-			get; protected set;
-		}
-	}
-
 	/// <summary>
 	/// <see cref="HtmlAttributeId"/> extension methods.
 	/// </summary>
@@ -597,16 +581,124 @@ namespace MimeKit.Text {
 	/// </remarks>
 	public static class HtmlAttributeIdExtensions
 	{
-		static readonly Dictionary<string, HtmlAttributeId> AttributeNameToId;
+		static readonly string[] AttributeNames = new string[] {
+			"abbr",
+			"accept",
+			"accept-charset",
+			"accesskey",
+			"action",
+			"align",
+			"alink",
+			"alt",
+			"archive",
+			"axis",
+			"background",
+			"bgcolor",
+			"border",
+			"cellpadding",
+			"cellspacing",
+			"char",
+			"charoff",
+			"charset",
+			"checked",
+			"cite",
+			"class",
+			"classid",
+			"clear",
+			"code",
+			"codebase",
+			"codetype",
+			"color",
+			"cols",
+			"colspan",
+			"compact",
+			"content",
+			"coords",
+			"data",
+			"datetime",
+			"declare",
+			"defer",
+			"dir",
+			"disabled",
+			"dynsrc",
+			"enctype",
+			"face",
+			"for",
+			"frame",
+			"frameborder",
+			"headers",
+			"height",
+			"href",
+			"hreflang",
+			"hspace",
+			"http-equiv",
+			"id",
+			"ismap",
+			"label",
+			"lang",
+			"language",
+			"leftmargin",
+			"link",
+			"longdesc",
+			"lowsrc",
+			"marginheight",
+			"marginwidth",
+			"maxlength",
+			"media",
+			"method",
+			"multiple",
+			"name",
+			"nohref",
+			"noresize",
+			"noshade",
+			"nowrap",
+			"object",
+			"profile",
+			"prompt",
+			"readonly",
+			"rel",
+			"rev",
+			"rows",
+			"rowspan",
+			"rules",
+			"scheme",
+			"scope",
+			"scrolling",
+			"selected",
+			"shape",
+			"size",
+			"span",
+			"src",
+			"standby",
+			"start",
+			"style",
+			"summary",
+			"tabindex",
+			"target",
+			"text",
+			"title",
+			"topmargin",
+			"type",
+			"usemap",
+			"valign",
+			"value",
+			"valuetype",
+			"version",
+			"vlink",
+			"vspace",
+			"width",
+			"xmlns",
+		};
+		static readonly Dictionary<string, HtmlAttributeId> IdMapping;
 
 		static HtmlAttributeIdExtensions ()
 		{
 			var values = (HtmlAttributeId[]) Enum.GetValues (typeof (HtmlAttributeId));
 
-			AttributeNameToId = new Dictionary<string, HtmlAttributeId> (values.Length - 1, MimeUtils.OrdinalIgnoreCase);
+			IdMapping = new Dictionary<string, HtmlAttributeId> (values.Length - 1, MimeUtils.OrdinalIgnoreCase);
 
 			for (int i = 1; i < values.Length; i++)
-				AttributeNameToId.Add (values[i].ToAttributeName (), values[i]);
+				IdMapping.Add (values[i].ToAttributeName (), values[i]);
 		}
 
 		/// <summary>
@@ -619,20 +711,12 @@ namespace MimeKit.Text {
 		/// <param name="value">The enum value.</param>
 		public static string ToAttributeName (this HtmlAttributeId value)
 		{
-			var name = value.ToString ();
+			int index = (int) value;
 
-#if NETSTANDARD1_3 || NETSTANDARD1_6
-			var field = typeof (HtmlAttributeId).GetTypeInfo ().GetDeclaredField (name);
-			var attrs = field.GetCustomAttributes (typeof (HtmlAttributeNameAttribute), false).ToArray ();
-#else
-			var field = typeof (HtmlAttributeId).GetField (name);
-			var attrs = field.GetCustomAttributes (typeof (HtmlAttributeNameAttribute), false);
-#endif
+			if (index > 0 && index <= AttributeNames.Length)
+				return AttributeNames[index - 1];
 
-			if (attrs != null && attrs.Length == 1)
-				return ((HtmlAttributeNameAttribute) attrs[0]).Name;
-
-			return name.ToLowerInvariant ();
+			return value.ToString ();
 		}
 
 		/// <summary>
@@ -645,9 +729,7 @@ namespace MimeKit.Text {
 		/// <param name="name">The attribute name.</param>
 		internal static HtmlAttributeId ToHtmlAttributeId (this string name)
 		{
-			HtmlAttributeId value;
-
-			if (!AttributeNameToId.TryGetValue (name, out value))
+			if (!IdMapping.TryGetValue (name, out HtmlAttributeId value))
 				return HtmlAttributeId.Unknown;
 
 			return value;

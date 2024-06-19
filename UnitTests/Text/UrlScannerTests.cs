@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -26,13 +26,11 @@
 
 using MimeKit.Text;
 
-using NUnit.Framework;
-
 namespace UnitTests.Text {
 	[TestFixture]
 	public class UrlScannerTests
 	{
-		UrlScanner scanner;
+		readonly UrlScanner scanner;
 
 		public UrlScannerTests ()
 		{
@@ -48,7 +46,7 @@ namespace UnitTests.Text {
 			char[] text = "This is some text with nothing to match...".ToCharArray ();
 			UrlMatch match;
 
-			Assert.IsFalse (scanner.Scan (text, 0, text.Length, out match), "Should not have found a match");
+			Assert.That (scanner.Scan (text, 0, text.Length, out match), Is.False, "Should not have found a match");
 		}
 
 		void TestUrlScanner (string input, string expected)
@@ -58,15 +56,15 @@ namespace UnitTests.Text {
 			string url;
 
 			if (expected == null) {
-				Assert.IsFalse (scanner.Scan (text, 0, text.Length, out match), "Should not have found a match.");
+				Assert.That (scanner.Scan (text, 0, text.Length, out match), Is.False, "Should not have found a match.");
 				return;
 			}
 
-			Assert.IsTrue (scanner.Scan (text, 0, text.Length, out match), "Failed to find match.");
+			Assert.That (scanner.Scan (text, 0, text.Length, out match), Is.True, "Failed to find match.");
 
 			url = new string (text, match.StartIndex, match.EndIndex - match.StartIndex);
 
-			Assert.AreEqual (expected, url, "Did not match the expected substring.");
+			Assert.That (url, Is.EqualTo (expected), "Did not match the expected substring.");
 		}
 
 		[Test]
@@ -217,6 +215,36 @@ namespace UnitTests.Text {
 		public void TestSimpleWebUrlWithPortAndPath ()
 		{
 			TestUrlScanner ("This is some text with an http://www.xamarin.com:80/logo.png url in it...", "http://www.xamarin.com:80/logo.png");
+		}
+
+		[Test]
+		public void TestSimpleWebUrlWithQuery ()
+		{
+			TestUrlScanner ("This is some text with an http://www.xamarin.com?query url in it...", "http://www.xamarin.com?query");
+		}
+
+		[Test]
+		public void TestSimpleWebUrlWithPortAndQuery ()
+		{
+			TestUrlScanner ("This is some text with an http://www.xamarin.com:80?query url in it...", "http://www.xamarin.com:80?query");
+		}
+
+		[Test]
+		public void TestSimpleWebUrlWithQuestionMark ()
+		{
+			TestUrlScanner ("Have you seen this website: http://www.xamarin.com? Wow!", "http://www.xamarin.com");
+		}
+
+		[Test]
+		public void TestSimpleWebUrlWithTwoQuestionMarks ()
+		{
+			TestUrlScanner ("Have you seen this website: http://www.xamarin.com?? Wow!", "http://www.xamarin.com");
+		}
+
+		[Test]
+		public void TestWebUrlWithLeadingNumericDomain ()
+		{
+			TestUrlScanner ("Have you seen this website: https://23andme.com?? Now you can check if you really are 1/1024 native american!", "https://23andme.com");
 		}
 
 		[Test]

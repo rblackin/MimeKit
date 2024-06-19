@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -54,7 +54,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Clones the <see cref="MessageIdList"/>.
+		/// Clone the <see cref="MessageIdList"/>.
 		/// </summary>
 		/// <remarks>
 		/// Creates an exact copy of the <see cref="MessageIdList"/>.
@@ -85,7 +85,7 @@ namespace MimeKit {
 		/// </exception>
 		public int IndexOf (string messageId)
 		{
-			if (messageId == null)
+			if (messageId is null)
 				throw new ArgumentNullException (nameof (messageId));
 
 			return references.IndexOf (messageId);
@@ -100,7 +100,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Insert the Message-Id at the specified index.
+		/// Insert a Message-Id at the specified index.
 		/// </summary>
 		/// <remarks>
 		/// Inserts the Message-Id at the specified index in the list.
@@ -115,7 +115,7 @@ namespace MimeKit {
 		/// </exception>
 		public void Insert (int index, string messageId)
 		{
-			if (messageId == null)
+			if (messageId is null)
 				throw new ArgumentNullException (nameof (messageId));
 
 			references.Insert (index, ValidateMessageId (messageId));
@@ -155,7 +155,7 @@ namespace MimeKit {
 		public string this [int index] {
 			get { return references[index]; }
 			set {
-				if (value == null)
+				if (value is null)
 					throw new ArgumentNullException (nameof (value));
 
 				if (references[index] == value)
@@ -171,7 +171,7 @@ namespace MimeKit {
 		#region ICollection implementation
 
 		/// <summary>
-		/// Add the specified Message-Id.
+		/// Add a Message-Id.
 		/// </summary>
 		/// <remarks>
 		/// Adds the specified Message-Id to the end of the list.
@@ -182,7 +182,7 @@ namespace MimeKit {
 		/// </exception>
 		public void Add (string messageId)
 		{
-			if (messageId == null)
+			if (messageId is null)
 				throw new ArgumentNullException (nameof (messageId));
 
 			references.Add (ValidateMessageId (messageId));
@@ -190,7 +190,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Add a collection of Message-Id items.
+		/// Add a collection of Message-Ids.
 		/// </summary>
 		/// <remarks>
 		/// Adds a collection of Message-Id items to append to the list.
@@ -201,7 +201,7 @@ namespace MimeKit {
 		/// </exception>
 		public void AddRange (IEnumerable<string> items)
 		{
-			if (items == null)
+			if (items is null)
 				throw new ArgumentNullException (nameof (items));
 
 			foreach (var msgid in items)
@@ -236,7 +236,7 @@ namespace MimeKit {
 		/// </exception>
 		public bool Contains (string messageId)
 		{
-			if (messageId == null)
+			if (messageId is null)
 				throw new ArgumentNullException (nameof (messageId));
 
 			return references.Contains (messageId);
@@ -276,7 +276,7 @@ namespace MimeKit {
 		/// </exception>
 		public bool Remove (string messageId)
 		{
-			if (messageId == null)
+			if (messageId is null)
 				throw new ArgumentNullException (nameof (messageId));
 
 			if (references.Remove (messageId)) {
@@ -353,7 +353,7 @@ namespace MimeKit {
 		/// <returns>A string representing the <see cref="MessageIdList"/>.</returns>
 		public override string ToString ()
 		{
-			var builder = new StringBuilder ();
+			var builder = new ValueStringBuilder (128);
 
 			for (int i = 0; i < references.Count; i++) {
 				if (builder.Length > 0)
@@ -371,8 +371,7 @@ namespace MimeKit {
 
 		void OnChanged ()
 		{
-			if (Changed != null)
-				Changed (this, EventArgs.Empty);
+			Changed?.Invoke (this, EventArgs.Empty);
 		}
 	}
 }

@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,10 +23,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 //
-
-using System;
-
-using NUnit.Framework;
 
 using MimeKit;
 
@@ -55,6 +51,7 @@ namespace UnitTests {
 			Assert.Throws<InvalidOperationException> (() => FormatOptions.Default.NewLineFormat = NewLineFormat.Dos, "NewLineFormat");
 			Assert.Throws<InvalidOperationException> (() => FormatOptions.Default.AllowMixedHeaderCharsets = true, "AllowMixedHeaderCharsets");
 			Assert.Throws<InvalidOperationException> (() => FormatOptions.Default.ParameterEncodingMethod = ParameterEncodingMethod.Rfc2047, "ParameterEncodingMethod");
+			Assert.Throws<InvalidOperationException> (() => FormatOptions.Default.AlwaysQuoteParameterValues = true, "AlwaysQuoteParameterValues");
 		}
 	}
 }

@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,12 +24,8 @@
 // THE SOFTWARE.
 //
 
-using System;
-using System.IO;
-
-using NUnit.Framework;
-
 using MimeKit;
+using MimeKit.Text;
 using MimeKit.Utils;
 
 namespace UnitTests {
@@ -55,6 +51,21 @@ namespace UnitTests {
 		}
 
 		[Test]
+		public void TestGenericArgsConstructor ()
+		{
+			var multipart = new MultipartRelated (
+				new Header (HeaderId.ContentDescription, "This is a description of the multipart."),
+				new TextPart (TextFormat.Plain) { Text = "This is the message body." },
+				new MimePart ("image", "gif") { FileName = "attachment.gif" }
+				);
+
+			Assert.That (multipart.Headers.Contains (HeaderId.ContentDescription), Is.True, "Content-Description header");
+			Assert.That (multipart.Count, Is.EqualTo (2), "Child part count");
+			Assert.That (multipart[0].ContentType.MimeType, Is.EqualTo ("text/plain"), "MimeType[0]");
+			Assert.That (multipart[1].ContentType.MimeType, Is.EqualTo ("image/gif"), "MimeType[1]");
+		}
+
+		[Test]
 		public void TestDocumentRoot ()
 		{
 			var gif = new MimePart ("image", "gif") { ContentDisposition = new ContentDisposition (ContentDisposition.Inline) { FileName = "empty.gif" }, ContentId = MimeUtils.GenerateMessageId () };
@@ -66,35 +77,35 @@ namespace UnitTests {
 			related.ContentType.Parameters["type"] = "text/html";
 			related.ContentType.Parameters["start"] = "<" + html.ContentId + ">";
 
-			Assert.AreEqual (3, related.Count, "Initial Count");
-			Assert.AreEqual (html, related.Root, "Initial Root");
-			Assert.AreEqual (html, related[2], "Initial Root should be the 3rd item.");
+			Assert.That (related.Count, Is.EqualTo (3), "Initial Count");
+			Assert.That (related.Root, Is.EqualTo (html), "Initial Root");
+			Assert.That (related[2], Is.EqualTo (html), "Initial Root should be the 3rd item.");
 
 			var root = new TextPart ("html") { Text = "This is the replacement root document..." };
 
 			related.Root = root;
 
-			Assert.AreEqual (3, related.Count, "Count");
-			Assert.AreEqual (root, related.Root, "Root");
-			Assert.AreEqual (root, related[2], "Root should be the 3rd item.");
-			Assert.IsNotNull (root.ContentId, "Root's Content-Id should not be null.");
-			Assert.IsNotEmpty (root.ContentId, "Root's Content-Id should not be empty.");
+			Assert.That (related.Count, Is.EqualTo (3), "Count");
+			Assert.That (related.Root, Is.EqualTo (root), "Root");
+			Assert.That (related[2], Is.EqualTo (root), "Root should be the 3rd item.");
+			Assert.That (root.ContentId, Is.Not.Null, "Root's Content-Id should not be null.");
+			Assert.That (root.ContentId, Is.Not.Empty, "Root's Content-Id should not be empty.");
 
 			start = "<" + root.ContentId + ">";
 
-			Assert.AreEqual (start, related.ContentType.Parameters["start"], "The start parameter does not match.");
+			Assert.That (related.ContentType.Parameters["start"], Is.EqualTo (start), "The start parameter does not match.");
 
 			related.Clear ();
 			related.Add (gif);
 			related.Add (jpg);
 			related.Root = html;
 
-			Assert.AreEqual (3, related.Count, "Count");
-			Assert.AreEqual (html, related.Root, "Root");
-			Assert.AreEqual (html, related[0], "Root should be the 1st item.");
+			Assert.That (related.Count, Is.EqualTo (3), "Count");
+			Assert.That (related.Root, Is.EqualTo (html), "Root");
+			Assert.That (related[0], Is.EqualTo (html), "Root should be the 1st item.");
 
 			// Note: MimeKit no longer sets the "start" parameter if the root is the first MIME part due to a bug in Thunderbird.
-			Assert.IsNull (related.ContentType.Parameters["start"], "The start parameter should be null.");
+			Assert.That (related.ContentType.Parameters["start"], Is.Null, "The start parameter should be null.");
 		}
 
 		[Test]
@@ -102,57 +113,56 @@ namespace UnitTests {
 		{
 			var related = (MultipartRelated) MimeEntity.Load (Path.Combine (TestHelper.ProjectDir, "TestData", "messages", "multipart-related-mhtml.txt"));
 
-			Assert.AreEqual (2, related.Count, "Count");
+			Assert.That (related.Count, Is.EqualTo (2), "Count");
 
 			var image = related[0];
 
-			Assert.AreEqual ("image/png", image.ContentType.MimeType, "related[0]");
+			Assert.That (image.ContentType.MimeType, Is.EqualTo ("image/png"), "related[0]");
 
 			var html = related[1];
 
-			Assert.AreEqual ("text/html", html.ContentType.MimeType, "related[1]");
+			Assert.That (html.ContentType.MimeType, Is.EqualTo ("text/html"), "related[1]");
 
-			Assert.AreEqual (html, related.Root, "Root");
+			Assert.That (related.Root, Is.EqualTo (html), "Root");
 		}
 
 		[Test]
 		public void TestReferenceByContentId ()
 		{
-			var builder = new BodyBuilder ();
+			var builder = new BodyBuilder {
+				HtmlBody = "<html>This is an <b>html</b> body.</html>"
+			};
 
-			builder.HtmlBody = "<html>This is an <b>html</b> body.</html>";
-
-			builder.LinkedResources.Add ("empty.gif", new byte[0], new ContentType ("image", "gif"));
-			builder.LinkedResources.Add ("empty.jpg", new byte[0], new ContentType ("image", "jpg"));
+			builder.LinkedResources.Add ("empty.gif", Array.Empty<byte> (), new ContentType ("image", "gif"));
+			builder.LinkedResources.Add ("empty.jpg", Array.Empty<byte> (), new ContentType ("image", "jpg"));
 
 			foreach (var attachment in builder.LinkedResources)
 				attachment.ContentId = MimeUtils.GenerateMessageId ();
 
 			var body = builder.ToMessageBody ();
 
-			Assert.IsInstanceOf<MultipartRelated> (body, "Expected a multipart/related.");
+			Assert.That (body, Is.InstanceOf<MultipartRelated> (), "Expected a multipart/related.");
 
 			var related = (MultipartRelated) body;
 
-			Assert.AreEqual ("text/html", related.ContentType.Parameters["type"], "The type parameter does not match.");
+			Assert.That (related.ContentType.Parameters["type"], Is.EqualTo ("text/html"), "The type parameter does not match.");
 
 			var root = related.Root;
 
-			Assert.IsNotNull (root, "The root document should not be null.");
-			Assert.IsTrue (root.ContentType.IsMimeType ("text", "html"), "The root document has an unexpected mime-type.");
+			Assert.That (root, Is.Not.Null, "The root document should not be null.");
+			Assert.That (root.ContentType.IsMimeType ("text", "html"), Is.True, "The root document has an unexpected mime-type.");
 
 			// Note: MimeKit no longer sets the "start" parameter if the root is the first MIME part due to a bug in Thunderbird.
-			Assert.IsNull (related.ContentType.Parameters["start"], "The start parameter should be null.");
+			Assert.That (related.ContentType.Parameters["start"], Is.Null, "The start parameter should be null.");
 
 			for (int i = 1; i < related.Count; i++) {
 				var cid = new Uri (string.Format ("cid:{0}", related[i].ContentId));
-				string mimeType, charset;
 
-				Assert.IsTrue (related.Contains (cid), "Contains failed.");
-				Assert.AreEqual (i, related.IndexOf (cid), "IndexOf did not return the expected index.");
+				Assert.That (related.Contains (cid), Is.True, "Contains failed.");
+				Assert.That (related.IndexOf (cid), Is.EqualTo (i), "IndexOf did not return the expected index.");
 
-				using (var stream = related.Open (cid, out mimeType, out charset)) {
-					Assert.AreEqual (related[i].ContentType.MimeType, mimeType, "mime-types did not match.");
+				using (var stream = related.Open (cid, out var mimeType, out var charset)) {
+					Assert.That (mimeType, Is.EqualTo (related[i].ContentType.MimeType), "mime-types did not match.");
 				}
 
 				Assert.DoesNotThrow (() => related.Open (cid).Dispose ());
@@ -162,37 +172,35 @@ namespace UnitTests {
 		[Test]
 		public void TestReferenceByContentLocation ()
 		{
-			var builder = new BodyBuilder ();
+			var builder = new BodyBuilder {
+				HtmlBody = "<html>This is an <b>html</b> body.</html>"
+			};
 
-			builder.HtmlBody = "<html>This is an <b>html</b> body.</html>";
-
-			builder.LinkedResources.Add ("empty.gif", new byte[0], new ContentType ("image", "gif"));
-			builder.LinkedResources.Add ("empty.jpg", new byte[0], new ContentType ("image", "jpg"));
+			builder.LinkedResources.Add ("empty.gif", Array.Empty<byte> (), new ContentType ("image", "gif"));
+			builder.LinkedResources.Add ("empty.jpg", Array.Empty<byte> (), new ContentType ("image", "jpg"));
 
 			var body = builder.ToMessageBody ();
 
-			Assert.IsInstanceOf<MultipartRelated> (body, "Expected a multipart/related.");
+			Assert.That (body, Is.InstanceOf<MultipartRelated> (), "Expected a multipart/related.");
 
 			var related = (MultipartRelated) body;
 
-			Assert.AreEqual ("text/html", related.ContentType.Parameters["type"], "The type parameter does not match.");
+			Assert.That (related.ContentType.Parameters["type"], Is.EqualTo ("text/html"), "The type parameter does not match.");
 
 			var root = related.Root;
 
-			Assert.IsNotNull (root, "The root document should not be null.");
-			Assert.IsTrue (root.ContentType.IsMimeType ("text", "html"), "The root document has an unexpected mime-type.");
+			Assert.That (root, Is.Not.Null, "The root document should not be null.");
+			Assert.That (root.ContentType.IsMimeType ("text", "html"), Is.True, "The root document has an unexpected mime-type.");
 
 			// Note: MimeKit no longer sets the "start" parameter if the root is the first MIME part due to a bug in Thunderbird.
-			Assert.IsNull (related.ContentType.Parameters["start"], "The start parameter should be null.");
+			Assert.That (related.ContentType.Parameters["start"], Is.Null, "The start parameter should be null.");
 
 			for (int i = 1; i < related.Count; i++) {
-				string mimeType, charset;
+				Assert.That (related.Contains (related[i].ContentLocation), Is.True, "Contains failed.");
+				Assert.That (related.IndexOf (related[i].ContentLocation), Is.EqualTo (i), "IndexOf did not return the expected index.");
 
-				Assert.IsTrue (related.Contains (related[i].ContentLocation), "Contains failed.");
-				Assert.AreEqual (i, related.IndexOf (related[i].ContentLocation), "IndexOf did not return the expected index.");
-
-				using (var stream = related.Open (related[i].ContentLocation, out mimeType, out charset)) {
-					Assert.AreEqual (related[i].ContentType.MimeType, mimeType, "mime-types did not match.");
+				using (var stream = related.Open (related[i].ContentLocation, out var mimeType, out var charset)) {
+					Assert.That (mimeType, Is.EqualTo (related[i].ContentType.MimeType), "mime-types did not match.");
 				}
 
 				Assert.DoesNotThrow (() => related.Open (related[i].ContentLocation).Dispose ());

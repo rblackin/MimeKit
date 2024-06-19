@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,8 +24,10 @@
 // THE SOFTWARE.
 //
 
+using System;
 using System.Text;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 namespace MimeKit.Utils {
 	static class StringBuilderExtensions
@@ -126,8 +128,28 @@ namespace MimeKit.Utils {
 			return text;
 		}
 
+#if NETSTANDARD2_0 || NETFRAMEWORK
+		public static void Append (this StringBuilder text, ReadOnlySpan<char> value)
+		{
+			char[] buffer = System.Buffers.ArrayPool<char>.Shared.Rent (value.Length);
+
+			try {
+				value.CopyTo (new Span<char> (buffer));
+				text.Append (buffer, 0, value.Length);
+			} finally {
+				System.Buffers.ArrayPool<char>.Shared.Return (buffer);
+			}
+		}
+
+		public static void Append (this StringBuilder sb, StringBuilder value)
+		{
+			sb.Append (value.ToString ());
+		}
+#endif
+
 #if DEBUG
-		public static void AppendCStringByte (this StringBuilder text, byte c)
+		[MethodImpl (MethodImplOptions.AggressiveInlining)]
+		static void AppendCStringByte (this StringBuilder text, byte c)
 		{
 			switch (c) {
 			case 0x00: text.Append ("\\0"); break;

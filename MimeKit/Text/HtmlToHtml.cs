@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -244,10 +244,10 @@ namespace MimeKit.Text {
 		/// </exception>
 		public override void Convert (TextReader reader, TextWriter writer)
 		{
-			if (reader == null)
+			if (reader is null)
 				throw new ArgumentNullException (nameof (reader));
 
-			if (writer == null)
+			if (writer is null)
 				throw new ArgumentNullException (nameof (writer));
 
 			if (!string.IsNullOrEmpty (Header)) {
@@ -264,11 +264,12 @@ namespace MimeKit.Text {
 			using (var htmlWriter = new HtmlWriter (writer)) {
 				var callback = HtmlTagCallback ?? DefaultHtmlTagCallback;
 				var stack = new List<HtmlToHtmlTagContext> ();
-				var tokenizer = new HtmlTokenizer (reader);
+				var tokenizer = new HtmlTokenizer (reader) {
+					DecodeCharacterReferences = false
+				};
 				HtmlToHtmlTagContext ctx;
-				HtmlToken token;
 
-				while (tokenizer.ReadNextToken (out token)) {
+				while (tokenizer.ReadNextToken (out var token)) {
 					switch (token.Kind) {
 					default:
 						if (!SuppressContent (stack))
@@ -285,7 +286,7 @@ namespace MimeKit.Text {
 							//if (NormalizeHtml && AutoClosingTags.Contains (startTag.TagName) &&
 							//	(ctx = Pop (stack, startTag.TagName)) != null &&
 							//	ctx.InvokeCallbackForEndTag && !SuppressContent (stack)) {
-							//	var value = string.Format ("</{0}>", ctx.TagName);
+							//	var value = $"</{ctx.TagName}>";
 							//	var name = ctx.TagName;
 							//
 							//	ctx = new HtmlToHtmlTagContext (new HtmlTokenTag (HtmlTokenKind.EndTag, name, value)) {

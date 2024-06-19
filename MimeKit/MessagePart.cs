@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -38,7 +38,7 @@ namespace MimeKit {
 	/// <remarks>
 	/// Represents MIME entities such as those with a Content-Type of message/rfc822 or message/news.
 	/// </remarks>
-	public class MessagePart : MimeEntity
+	public class MessagePart : MimeEntity, IMessagePart
 	{
 		/// <summary>
 		/// Initialize a new instance of the <see cref="MessagePart"/> class.
@@ -74,13 +74,13 @@ namespace MimeKit {
 		/// </exception>
 		public MessagePart (string subtype, params object[] args) : this (subtype)
 		{
-			if (args == null)
+			if (args is null)
 				throw new ArgumentNullException (nameof (args));
 
 			MimeMessage message = null;
 
 			foreach (object obj in args) {
-				if (obj == null || TryInit (obj))
+				if (obj is null || TryInit (obj))
 					continue;
 
 				if (obj is MimeMessage mesg) {
@@ -139,6 +139,11 @@ namespace MimeKit {
 		{
 		}
 
+		void CheckDisposed ()
+		{
+			CheckDisposed (nameof (MessagePart));
+		}
+
 		/// <summary>
 		/// Gets or sets the message content.
 		/// </summary>
@@ -165,10 +170,15 @@ namespace MimeKit {
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="visitor"/> is <c>null</c>.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MessagePart"/> has been disposed.
+		/// </exception>
 		public override void Accept (MimeVisitor visitor)
 		{
-			if (visitor == null)
+			if (visitor is null)
 				throw new ArgumentNullException (nameof (visitor));
+
+			CheckDisposed ();
 
 			visitor.VisitMessagePart (this);
 		}
@@ -186,13 +196,17 @@ namespace MimeKit {
 		/// <para>-or-</para>
 		/// <para><paramref name="constraint"/> is not a valid value.</para>
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MessagePart"/> has been disposed.
+		/// </exception>
 		public override void Prepare (EncodingConstraint constraint, int maxLineLength = 78)
 		{
 			if (maxLineLength < FormatOptions.MinimumLineLength || maxLineLength > FormatOptions.MaximumLineLength)
 				throw new ArgumentOutOfRangeException (nameof (maxLineLength));
 
-			if (Message != null)
-				Message.Prepare (constraint, maxLineLength);
+			CheckDisposed ();
+
+			Message?.Prepare (constraint, maxLineLength);
 		}
 
 		/// <summary>
@@ -210,28 +224,27 @@ namespace MimeKit {
 		/// <para>-or-</para>
 		/// <para><paramref name="stream"/> is <c>null</c>.</para>
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MessagePart"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public override void WriteTo (FormatOptions options, Stream stream, bool contentOnly, CancellationToken cancellationToken = default (CancellationToken))
+		public override void WriteTo (FormatOptions options, Stream stream, bool contentOnly, CancellationToken cancellationToken = default)
 		{
 			base.WriteTo (options, stream, contentOnly, cancellationToken);
 
-			if (Message == null)
+			if (Message is null)
 				return;
 
 			if (Message.MboxMarker != null && Message.MboxMarker.Length != 0) {
-				var cancellable = stream as ICancellableStream;
-
-				if (cancellable != null) {
+				if (stream is ICancellableStream cancellable) {
 					cancellable.Write (Message.MboxMarker, 0, Message.MboxMarker.Length, cancellationToken);
-					cancellable.Write (options.NewLineBytes, 0, options.NewLineBytes.Length, cancellationToken);
 				} else {
 					stream.Write (Message.MboxMarker, 0, Message.MboxMarker.Length);
-					stream.Write (options.NewLineBytes, 0, options.NewLineBytes.Length);
 				}
 			}
 
@@ -259,23 +272,24 @@ namespace MimeKit {
 		/// <para>-or-</para>
 		/// <para><paramref name="stream"/> is <c>null</c>.</para>
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MessagePart"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public override async Task WriteToAsync (FormatOptions options, Stream stream, bool contentOnly, CancellationToken cancellationToken = default (CancellationToken))
+		public override async Task WriteToAsync (FormatOptions options, Stream stream, bool contentOnly, CancellationToken cancellationToken = default)
 		{
 			await base.WriteToAsync (options, stream, contentOnly, cancellationToken).ConfigureAwait (false);
 
-			if (Message == null)
+			if (Message is null)
 				return;
 
-			if (Message.MboxMarker != null && Message.MboxMarker.Length != 0) {
+			if (Message.MboxMarker != null && Message.MboxMarker.Length != 0)
 				await stream.WriteAsync (Message.MboxMarker, 0, Message.MboxMarker.Length, cancellationToken).ConfigureAwait (false);
-				await stream.WriteAsync (options.NewLineBytes, 0, options.NewLineBytes.Length, cancellationToken).ConfigureAwait (false);
-			}
 
 			if (options.EnsureNewLine) {
 				options = options.Clone ();
@@ -283,6 +297,24 @@ namespace MimeKit {
 			}
 
 			await Message.WriteToAsync (options, stream, cancellationToken).ConfigureAwait (false);
+		}
+
+		/// <summary>
+		/// Releases the unmanaged resources used by the <see cref="MessagePart"/> and
+		/// optionally releases the managed resources.
+		/// </summary>
+		/// <remarks>
+		/// Releases the unmanaged resources used by the <see cref="MessagePart"/> and
+		/// optionally releases the managed resources.
+		/// </remarks>
+		/// <param name="disposing"><c>true</c> to release both managed and unmanaged resources;
+		/// <c>false</c> to release only the unmanaged resources.</param>
+		protected override void Dispose (bool disposing)
+		{
+			if (disposing && Message != null)
+				Message.Dispose ();
+
+			base.Dispose (disposing);
 		}
 	}
 }

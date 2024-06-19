@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -27,15 +27,20 @@
 using System;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
+using System.Security.Cryptography.X509Certificates;
+
+using MimeKit.IO;
 
 using Org.BouncyCastle.Cms;
 using Org.BouncyCastle.Asn1;
 using Org.BouncyCastle.X509;
 using Org.BouncyCastle.Asn1.Ntt;
 using Org.BouncyCastle.Asn1.Kisa;
-using Org.BouncyCastle.Asn1.X509;
 using Org.BouncyCastle.Asn1.Pkcs;
 using Org.BouncyCastle.Asn1.Smime;
+
+using X509Certificate = Org.BouncyCastle.X509.X509Certificate;
 
 namespace MimeKit.Cryptography {
 	/// <summary>
@@ -46,7 +51,7 @@ namespace MimeKit.Cryptography {
 	/// directly, but rather via higher level APIs such as <see cref="MultipartSigned"/>
 	/// and <see cref="ApplicationPkcs7Mime"/>.
 	/// </remarks>
-	public abstract class SecureMimeContext : CryptographyContext
+	public abstract class SecureMimeContext : CryptographyContext, ISecureMimeContext
 	{
 		static readonly string[] ProtocolSubtypes = { "pkcs7-signature", "pkcs7-mime", "pkcs7-keys", "x-pkcs7-signature", "x-pkcs7-mime", "x-pkcs7-keys" };
 		internal const X509KeyUsageFlags DigitalSignatureKeyUsageFlags = X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.NonRepudiation;
@@ -60,15 +65,15 @@ namespace MimeKit.Cryptography {
 		/// <remarks>
 		/// <para>Enables the following encryption algorithms by default:</para>
 		/// <list type="bullet">
-		/// <item><term><see cref="EncryptionAlgorithm.Aes256"/></term></item>
-		/// <item><term><see cref="EncryptionAlgorithm.Aes192"/></term></item>
-		/// <item><term><see cref="EncryptionAlgorithm.Aes128"/></term></item>
-		/// <item><term><see cref="EncryptionAlgorithm.Camellia256"/></term></item>
-		/// <item><term><see cref="EncryptionAlgorithm.Camellia192"/></term></item>
-		/// <item><term><see cref="EncryptionAlgorithm.Camellia128"/></term></item>
-		/// <item><term><see cref="EncryptionAlgorithm.Cast5"/></term></item>
-		/// <item><term><see cref="EncryptionAlgorithm.TripleDes"/></term></item>
-		/// <item><term><see cref="EncryptionAlgorithm.Seed"/></term></item>
+		/// <item><see cref="EncryptionAlgorithm.Aes256"/></item>
+		/// <item><see cref="EncryptionAlgorithm.Aes192"/></item>
+		/// <item><see cref="EncryptionAlgorithm.Aes128"/></item>
+		/// <item><see cref="EncryptionAlgorithm.Camellia256"/></item>
+		/// <item><see cref="EncryptionAlgorithm.Camellia192"/></item>
+		/// <item><see cref="EncryptionAlgorithm.Camellia128"/></item>
+		/// <item><see cref="EncryptionAlgorithm.Cast5"/></item>
+		/// <item><see cref="EncryptionAlgorithm.TripleDes"/></item>
+		/// <item><see cref="EncryptionAlgorithm.Seed"/></item>
 		/// </list>
 		/// </remarks>
 		protected SecureMimeContext ()
@@ -262,14 +267,19 @@ namespace MimeKit.Cryptography {
 
 			switch (micalg.ToLowerInvariant ()) {
 			case "md5":         return DigestAlgorithm.MD5;
+			case "sha1":
 			case "sha-1":       return DigestAlgorithm.Sha1;
 			case "ripemd160":   return DigestAlgorithm.RipeMD160;
 			case "md2":         return DigestAlgorithm.MD2;
 			case "tiger192":    return DigestAlgorithm.Tiger192;
 			case "haval-5-160": return DigestAlgorithm.Haval5160;
+			case "sha256":
 			case "sha-256":     return DigestAlgorithm.Sha256;
+			case "sha384":
 			case "sha-384":     return DigestAlgorithm.Sha384;
+			case "sha512":
 			case "sha-512":     return DigestAlgorithm.Sha512;
+			case "sha224":
 			case "sha-224":     return DigestAlgorithm.Sha224;
 			case "md4":         return DigestAlgorithm.MD4;
 			default:            return DigestAlgorithm.None;
@@ -427,7 +437,7 @@ namespace MimeKit.Cryptography {
 		}
 
 		/// <summary>
-		/// Compresses the specified stream.
+		/// Compress the specified stream.
 		/// </summary>
 		/// <remarks>
 		/// Compresses the specified stream.
@@ -435,67 +445,152 @@ namespace MimeKit.Cryptography {
 		/// <returns>A new <see cref="ApplicationPkcs7Mime"/> instance
 		/// containing the compressed content.</returns>
 		/// <param name="stream">The stream to compress.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="stream"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
 		/// </exception>
 		/// <exception cref="Org.BouncyCastle.Cms.CmsException">
 		/// An error occurred in the cryptographic message syntax subsystem.
 		/// </exception>
-		public ApplicationPkcs7Mime Compress (Stream stream)
+		public virtual ApplicationPkcs7Mime Compress (Stream stream, CancellationToken cancellationToken = default)
 		{
 			if (stream == null)
 				throw new ArgumentNullException (nameof (stream));
+
+			cancellationToken.ThrowIfCancellationRequested ();
 
 			var compresser = new CmsCompressedDataGenerator ();
 			var processable = new CmsProcessableInputStream (stream);
 			var compressed = compresser.Generate (processable, CmsCompressedDataGenerator.ZLib);
-			var encoded = compressed.GetEncoded ();
 
-			return new ApplicationPkcs7Mime (SecureMimeType.CompressedData, new MemoryStream (encoded, false));
+			var content = new MemoryBlockStream ();
+			compressed.ContentInfo.EncodeTo (content);
+			content.Position = 0;
+
+			return new ApplicationPkcs7Mime (SecureMimeType.CompressedData, content);
 		}
 
 		/// <summary>
-		/// Decompress the specified stream.
+		/// Asynchronously compress the specified stream.
 		/// </summary>
 		/// <remarks>
-		/// Decompress the specified stream.
+		/// Asynchronously compresses the specified stream.
 		/// </remarks>
-		/// <returns>The decompressed mime part.</returns>
-		/// <param name="stream">The stream to decompress.</param>
+		/// <returns>A new <see cref="ApplicationPkcs7Mime"/> instance
+		/// containing the compressed content.</returns>
+		/// <param name="stream">The stream to compress.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="stream"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
 		/// </exception>
 		/// <exception cref="Org.BouncyCastle.Cms.CmsException">
 		/// An error occurred in the cryptographic message syntax subsystem.
 		/// </exception>
-		public MimeEntity Decompress (Stream stream)
+		public virtual Task<ApplicationPkcs7Mime> CompressAsync (Stream stream, CancellationToken cancellationToken = default)
+		{
+			// TODO: find a way to compress asynchronously
+			return Task.FromResult (Compress (stream, cancellationToken));
+		}
+
+		/// <summary>
+		/// Decompress the specified stream.
+		/// </summary>
+		/// <remarks>
+		/// Decompresses the specified stream.
+		/// </remarks>
+		/// <returns>The decompressed mime part.</returns>
+		/// <param name="stream">The stream to decompress.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="stream"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		/// <exception cref="Org.BouncyCastle.Cms.CmsException">
+		/// An error occurred in the cryptographic message syntax subsystem.
+		/// </exception>
+		public virtual MimeEntity Decompress (Stream stream, CancellationToken cancellationToken = default)
 		{
 			if (stream == null)
 				throw new ArgumentNullException (nameof (stream));
 
-			var parser = new CmsCompressedDataParser (stream);
-			var content = parser.GetContent ();
+			cancellationToken.ThrowIfCancellationRequested ();
 
-			return MimeEntity.Load (content.ContentStream);
+			using (var parser = new CmsCompressedDataParser (stream)) {
+				var content = parser.GetContent ();
+
+				try {
+					return MimeEntity.Load (content.ContentStream, cancellationToken);
+				} finally {
+					content.ContentStream.Dispose ();
+				}
+			}
+		}
+
+		/// <summary>
+		/// Asynchronously decompress the specified stream.
+		/// </summary>
+		/// <remarks>
+		/// Asynchronously decompresses the specified stream.
+		/// </remarks>
+		/// <returns>The decompressed mime part.</returns>
+		/// <param name="stream">The stream to decompress.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="stream"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		/// <exception cref="Org.BouncyCastle.Cms.CmsException">
+		/// An error occurred in the cryptographic message syntax subsystem.
+		/// </exception>
+		public virtual async Task<MimeEntity> DecompressAsync (Stream stream, CancellationToken cancellationToken = default)
+		{
+			if (stream == null)
+				throw new ArgumentNullException (nameof (stream));
+
+			cancellationToken.ThrowIfCancellationRequested ();
+
+			using (var parser = new CmsCompressedDataParser (stream)) {
+				var content = parser.GetContent ();
+
+				try {
+					return await MimeEntity.LoadAsync (content.ContentStream, cancellationToken).ConfigureAwait (false);
+				} finally {
+					content.ContentStream.Dispose ();
+				}
+			}
 		}
 
 		/// <summary>
 		/// Decompress the specified stream to an output stream.
 		/// </summary>
 		/// <remarks>
-		/// Decompress the specified stream to an output stream.
+		/// Decompresses the specified stream to an output stream.
 		/// </remarks>
 		/// <param name="stream">The stream to decompress.</param>
 		/// <param name="output">The output stream.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <para><paramref name="stream"/> is <c>null</c>.</para>
 		/// <para>-or-</para>
 		/// <para><paramref name="output"/> is <c>null</c>.</para>
 		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
 		/// <exception cref="Org.BouncyCastle.Cms.CmsException">
 		/// An error occurred in the cryptographic message syntax subsystem.
 		/// </exception>
-		public virtual void DecompressTo (Stream stream, Stream output)
+		public virtual void DecompressTo (Stream stream, Stream output, CancellationToken cancellationToken = default)
 		{
 			if (stream == null)
 				throw new ArgumentNullException (nameof (stream));
@@ -503,10 +598,61 @@ namespace MimeKit.Cryptography {
 			if (output == null)
 				throw new ArgumentNullException (nameof (output));
 
-			var parser = new CmsCompressedDataParser (stream);
-			var content = parser.GetContent ();
+			cancellationToken.ThrowIfCancellationRequested ();
 
-			content.ContentStream.CopyTo (output, 4096);
+			using (var parser = new CmsCompressedDataParser (stream)) {
+				var content = parser.GetContent ();
+
+				try {
+					cancellationToken.ThrowIfCancellationRequested ();
+					content.ContentStream.CopyTo (output, 4096);
+				} finally {
+					content.ContentStream.Dispose ();
+				}
+			}
+		}
+
+		/// <summary>
+		/// Asynchronously decompress the specified stream to an output stream.
+		/// </summary>
+		/// <remarks>
+		/// Asynchronously decompresses the specified stream to an output stream.
+		/// </remarks>
+		/// <returns>An asynchronous task context.</returns>
+		/// <param name="stream">The stream to decompress.</param>
+		/// <param name="output">The output stream.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <para><paramref name="stream"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="output"/> is <c>null</c>.</para>
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		/// <exception cref="Org.BouncyCastle.Cms.CmsException">
+		/// An error occurred in the cryptographic message syntax subsystem.
+		/// </exception>
+		public virtual async Task DecompressToAsync (Stream stream, Stream output, CancellationToken cancellationToken = default)
+		{
+			if (stream == null)
+				throw new ArgumentNullException (nameof (stream));
+
+			if (output == null)
+				throw new ArgumentNullException (nameof (output));
+
+			cancellationToken.ThrowIfCancellationRequested ();
+
+			using (var parser = new CmsCompressedDataParser (stream)) {
+				var content = parser.GetContent ();
+
+				try {
+					cancellationToken.ThrowIfCancellationRequested ();
+					await content.ContentStream.CopyToAsync (output, 4096, cancellationToken).ConfigureAwait (false);
+				} finally {
+					content.ContentStream.Dispose ();
+				}
+			}
 		}
 
 		internal SmimeCapabilitiesAttribute GetSecureMimeCapabilitiesAttribute (bool includeRsaesOaep)
@@ -580,33 +726,59 @@ namespace MimeKit.Cryptography {
 		}
 
 		/// <summary>
-		/// Cryptographically signs and encapsulates the content using the specified signer.
+		/// Sign and encapsulate the content using the specified signer.
 		/// </summary>
 		/// <remarks>
-		/// Cryptographically signs and encapsulates the content using the specified signer.
+		/// Signs and encapsulates the content using the specified signer.
 		/// </remarks>
 		/// <returns>A new <see cref="ApplicationPkcs7Mime"/> instance
 		/// containing the detached signature data.</returns>
 		/// <param name="signer">The signer.</param>
 		/// <param name="content">The content.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <para><paramref name="signer"/> is <c>null</c>.</para>
 		/// <para>-or-</para>
 		/// <para><paramref name="content"/> is <c>null</c>.</para>
 		/// </exception>
-		public abstract ApplicationPkcs7Mime EncapsulatedSign (CmsSigner signer, Stream content);
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		public abstract ApplicationPkcs7Mime EncapsulatedSign (CmsSigner signer, Stream content, CancellationToken cancellationToken = default);
 
 		/// <summary>
-		/// Cryptographically signs and encapsulates the content using the specified signer and digest algorithm.
+		/// Asynchronously sign and encapsulate the content using the specified signer.
 		/// </summary>
 		/// <remarks>
-		/// Cryptographically signs and encapsulates the content using the specified signer and digest algorithm.
+		/// Asynchronously signs and encapsulates the content using the specified signer.
+		/// </remarks>
+		/// <returns>A new <see cref="ApplicationPkcs7Mime"/> instance
+		/// containing the detached signature data.</returns>
+		/// <param name="signer">The signer.</param>
+		/// <param name="content">The content.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <para><paramref name="signer"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="content"/> is <c>null</c>.</para>
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		public abstract Task<ApplicationPkcs7Mime> EncapsulatedSignAsync (CmsSigner signer, Stream content, CancellationToken cancellationToken = default);
+
+		/// <summary>
+		/// Sign and encapsulate the content using the specified signer and digest algorithm.
+		/// </summary>
+		/// <remarks>
+		/// Signs and encapsulates the content using the specified signer and digest algorithm.
 		/// </remarks>
 		/// <returns>A new <see cref="ApplicationPkcs7Mime"/> instance
 		/// containing the detached signature data.</returns>
 		/// <param name="signer">The signer.</param>
 		/// <param name="digestAlgo">The digest algorithm to use for signing.</param>
 		/// <param name="content">The content.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <para><paramref name="signer"/> is <c>null</c>.</para>
 		/// <para>-or-</para>
@@ -618,30 +790,92 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.NotSupportedException">
 		/// The specified <see cref="DigestAlgorithm"/> is not supported by this context.
 		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
 		/// <exception cref="CertificateNotFoundException">
 		/// A signing certificate could not be found for <paramref name="signer"/>.
 		/// </exception>
 		/// <exception cref="Org.BouncyCastle.Cms.CmsException">
 		/// An error occurred in the cryptographic message syntax subsystem.
 		/// </exception>
-		public abstract ApplicationPkcs7Mime EncapsulatedSign (MailboxAddress signer, DigestAlgorithm digestAlgo, Stream content);
+		public abstract ApplicationPkcs7Mime EncapsulatedSign (MailboxAddress signer, DigestAlgorithm digestAlgo, Stream content, CancellationToken cancellationToken = default);
 
 		/// <summary>
-		/// Cryptographically signs the content using the specified signer.
+		/// Asynchronously sign and encapsulate the content using the specified signer and digest algorithm.
 		/// </summary>
 		/// <remarks>
-		/// Cryptographically signs the content using the specified signer.
+		/// Asynchronously signs and encapsulates the content using the specified signer and digest algorithm.
 		/// </remarks>
-		/// <returns>A new <see cref="ApplicationPkcs7Signature"/> instance
+		/// <returns>A new <see cref="ApplicationPkcs7Mime"/> instance
 		/// containing the detached signature data.</returns>
 		/// <param name="signer">The signer.</param>
+		/// <param name="digestAlgo">The digest algorithm to use for signing.</param>
 		/// <param name="content">The content.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <para><paramref name="signer"/> is <c>null</c>.</para>
 		/// <para>-or-</para>
 		/// <para><paramref name="content"/> is <c>null</c>.</para>
 		/// </exception>
-		public abstract ApplicationPkcs7Signature Sign (CmsSigner signer, Stream content);
+		/// <exception cref="System.ArgumentOutOfRangeException">
+		/// <paramref name="digestAlgo"/> is out of range.
+		/// </exception>
+		/// <exception cref="System.NotSupportedException">
+		/// The specified <see cref="DigestAlgorithm"/> is not supported by this context.
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		/// <exception cref="CertificateNotFoundException">
+		/// A signing certificate could not be found for <paramref name="signer"/>.
+		/// </exception>
+		/// <exception cref="Org.BouncyCastle.Cms.CmsException">
+		/// An error occurred in the cryptographic message syntax subsystem.
+		/// </exception>
+		public abstract Task<ApplicationPkcs7Mime> EncapsulatedSignAsync (MailboxAddress signer, DigestAlgorithm digestAlgo, Stream content, CancellationToken cancellationToken = default);
+
+		/// <summary>
+		/// Sign the content using the specified signer.
+		/// </summary>
+		/// <remarks>
+		/// Signs the content using the specified signer.
+		/// </remarks>
+		/// <returns>A new <see cref="ApplicationPkcs7Signature"/> instance
+		/// containing the detached signature data.</returns>
+		/// <param name="signer">The signer.</param>
+		/// <param name="content">The content.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <para><paramref name="signer"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="content"/> is <c>null</c>.</para>
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		public abstract ApplicationPkcs7Signature Sign (CmsSigner signer, Stream content, CancellationToken cancellationToken = default);
+
+		/// <summary>
+		/// Asynchronously sign the content using the specified signer.
+		/// </summary>
+		/// <remarks>
+		/// Asynchronously signs the content using the specified signer.
+		/// </remarks>
+		/// <returns>A new <see cref="ApplicationPkcs7Signature"/> instance
+		/// containing the detached signature data.</returns>
+		/// <param name="signer">The signer.</param>
+		/// <param name="content">The content.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <para><paramref name="signer"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="content"/> is <c>null</c>.</para>
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		public abstract Task<ApplicationPkcs7Signature> SignAsync (CmsSigner signer, Stream content, CancellationToken cancellationToken = default);
 
 		/// <summary>
 		/// Verify the digital signatures of the specified signed data and extract the original content.
@@ -662,7 +896,7 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was cancelled via the cancellation token.
 		/// </exception>
-		public abstract DigitalSignatureCollection Verify (Stream signedData, out MimeEntity entity, CancellationToken cancellationToken = default (CancellationToken));
+		public abstract DigitalSignatureCollection Verify (Stream signedData, out MimeEntity entity, CancellationToken cancellationToken = default);
 
 		/// <summary>
 		/// Verify the digital signatures of the specified signed data and extract the original content.
@@ -683,7 +917,7 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was cancelled via the cancellation token.
 		/// </exception>
-		public abstract Stream Verify (Stream signedData, out DigitalSignatureCollection signatures, CancellationToken cancellationToken = default (CancellationToken));
+		public abstract Stream Verify (Stream signedData, out DigitalSignatureCollection signatures, CancellationToken cancellationToken = default);
 
 		/// <summary>
 		/// Encrypts the specified content for the specified recipients.
@@ -695,12 +929,37 @@ namespace MimeKit.Cryptography {
 		/// containing the encrypted content.</returns>
 		/// <param name="recipients">The recipients.</param>
 		/// <param name="content">The content.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <para><paramref name="recipients"/> is <c>null</c>.</para>
 		/// <para>-or-</para>
 		/// <para><paramref name="content"/> is <c>null</c>.</para>
 		/// </exception>
-		public abstract ApplicationPkcs7Mime Encrypt (CmsRecipientCollection recipients, Stream content);
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		public abstract ApplicationPkcs7Mime Encrypt (CmsRecipientCollection recipients, Stream content, CancellationToken cancellationToken = default);
+
+		/// <summary>
+		/// Asynchronously encrypts the specified content for the specified recipients.
+		/// </summary>
+		/// <remarks>
+		/// Asynchronously encrypts the specified content for the specified recipients.
+		/// </remarks>
+		/// <returns>A new <see cref="ApplicationPkcs7Mime"/> instance
+		/// containing the encrypted content.</returns>
+		/// <param name="recipients">The recipients.</param>
+		/// <param name="content">The content.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <para><paramref name="recipients"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="content"/> is <c>null</c>.</para>
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		public abstract Task<ApplicationPkcs7Mime> EncryptAsync (CmsRecipientCollection recipients, Stream content, CancellationToken cancellationToken = default);
 
 		/// <summary>
 		/// Decrypts the specified encryptedData to an output stream.
@@ -710,12 +969,36 @@ namespace MimeKit.Cryptography {
 		/// </remarks>
 		/// <param name="encryptedData">The encrypted data.</param>
 		/// <param name="decryptedData">The stream to write the decrypted data to.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <para><paramref name="encryptedData"/> is <c>null</c>.</para>
 		/// <para>-or-</para>
 		/// <para><paramref name="decryptedData"/> is <c>null</c>.</para>
 		/// </exception>
-		public abstract void DecryptTo (Stream encryptedData, Stream decryptedData);
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		public abstract void DecryptTo (Stream encryptedData, Stream decryptedData, CancellationToken cancellationToken = default);
+
+		/// <summary>
+		/// Asynchronously decrypts the specified encryptedData to an output stream.
+		/// </summary>
+		/// <remarks>
+		/// Asynchronously decrypts the specified encryptedData to an output stream.
+		/// </remarks>
+		/// <returns>An asynchronous task context.</returns>
+		/// <param name="encryptedData">The encrypted data.</param>
+		/// <param name="decryptedData">The stream to write the decrypted data to.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <para><paramref name="encryptedData"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="decryptedData"/> is <c>null</c>.</para>
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		public abstract Task DecryptToAsync (Stream encryptedData, Stream decryptedData, CancellationToken cancellationToken = default);
 
 		/// <summary>
 		/// Imports certificates and keys from a pkcs12-encoded stream.
@@ -725,6 +1008,7 @@ namespace MimeKit.Cryptography {
 		/// </remarks>
 		/// <param name="stream">The raw certificate and key data.</param>
 		/// <param name="password">The password to unlock the stream.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <para><paramref name="stream"/> is <c>null</c>.</para>
 		/// <para>-or-</para>
@@ -733,7 +1017,33 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.NotSupportedException">
 		/// Importing keys is not supported by this cryptography context.
 		/// </exception>
-		public abstract void Import (Stream stream, string password);
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		public abstract void Import (Stream stream, string password, CancellationToken cancellationToken = default);
+
+		/// <summary>
+		/// Asynchronously imports certificates and keys from a pkcs12-encoded stream.
+		/// </summary>
+		/// <remarks>
+		/// Asynchronously imports certificates and keys from a pkcs12-encoded stream.
+		/// </remarks>
+		/// <returns>An asynchronous task context.</returns>
+		/// <param name="stream">The raw certificate and key data.</param>
+		/// <param name="password">The password to unlock the stream.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <para><paramref name="stream"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="password"/> is <c>null</c>.</para>
+		/// </exception>
+		/// <exception cref="System.NotSupportedException">
+		/// Importing keys is not supported by this cryptography context.
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		public abstract Task ImportAsync (Stream stream, string password, CancellationToken cancellationToken = default);
 
 		/// <summary>
 		/// Imports certificates and keys from a pkcs12 file.
@@ -743,6 +1053,7 @@ namespace MimeKit.Cryptography {
 		/// </remarks>
 		/// <param name="fileName">The raw certificate and key data in pkcs12 format.</param>
 		/// <param name="password">The password to unlock the stream.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <para><paramref name="fileName"/> is <c>null</c>.</para>
 		/// <para>-or-</para>
@@ -771,7 +1082,10 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.NotSupportedException">
 		/// Importing keys is not supported by this cryptography context.
 		/// </exception>
-		public virtual void Import (string fileName, string password)
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		public virtual void Import (string fileName, string password, CancellationToken cancellationToken = default)
 		{
 			if (fileName == null)
 				throw new ArgumentNullException (nameof (fileName));
@@ -779,36 +1093,211 @@ namespace MimeKit.Cryptography {
 			if (password == null)
 				throw new ArgumentNullException (nameof (password));
 
+			cancellationToken.ThrowIfCancellationRequested ();
+
 			using (var stream = File.OpenRead (fileName))
-				Import (stream, password);
+				Import (stream, password, cancellationToken);
 		}
 
 		/// <summary>
-		/// Imports the specified certificate.
+		/// Asynchronously imports certificates and keys from a pkcs12 file.
 		/// </summary>
 		/// <remarks>
-		/// Imports the specified certificate.
+		/// Asynchronously imports certificates and keys from a pkcs12 file.
+		/// </remarks>
+		/// <returns>An asynchronous task context.</returns>
+		/// <param name="fileName">The raw certificate and key data in pkcs12 format.</param>
+		/// <param name="password">The password to unlock the stream.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <para><paramref name="fileName"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="password"/> is <c>null</c>.</para>
+		/// </exception>
+		/// <exception cref="System.ArgumentException">
+		/// <para><paramref name="fileName"/> is a zero-length string, contains only white space, or
+		/// contains one or more invalid characters.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="fileName"/> does not contain a private key.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="fileName"/> does not contain a certificate that could be used for signing.</para>
+		/// </exception>
+		/// <exception cref="System.IO.DirectoryNotFoundException">
+		/// <paramref name="fileName"/> is an invalid file path.
+		/// </exception>
+		/// <exception cref="System.IO.FileNotFoundException">
+		/// The specified file path could not be found.
+		/// </exception>
+		/// <exception cref="System.UnauthorizedAccessException">
+		/// The user does not have access to read the specified file.
+		/// </exception>
+		/// <exception cref="System.IO.IOException">
+		/// An I/O error occurred.
+		/// </exception>
+		/// <exception cref="System.NotSupportedException">
+		/// Importing keys is not supported by this cryptography context.
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		public virtual async Task ImportAsync (string fileName, string password, CancellationToken cancellationToken = default)
+		{
+			if (fileName == null)
+				throw new ArgumentNullException (nameof (fileName));
+
+			if (password == null)
+				throw new ArgumentNullException (nameof (password));
+
+			cancellationToken.ThrowIfCancellationRequested ();
+
+			using (var stream = File.OpenRead (fileName))
+				await ImportAsync (stream, password, cancellationToken).ConfigureAwait (false);
+		}
+
+		/// <summary>
+		/// Import a certificate.
+		/// </summary>
+		/// <remarks>
+		/// Imports a certificate.
 		/// </remarks>
 		/// <param name="certificate">The certificate.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="certificate"/> is <c>null</c>.
 		/// </exception>
-		public abstract void Import (X509Certificate certificate);
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		public abstract void Import (X509Certificate certificate, CancellationToken cancellationToken = default);
 
 		/// <summary>
-		/// Imports the specified certificate revocation list.
+		/// Asynchronously import a certificate.
 		/// </summary>
 		/// <remarks>
-		/// Imports the specified certificate revocation list.
+		/// Asynchronously imports a certificate.
+		/// </remarks>
+		/// <returns>An asynchronous task context.</returns>
+		/// <param name="certificate">The certificate.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="certificate"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		public virtual Task ImportAsync (X509Certificate certificate, CancellationToken cancellationToken = default)
+		{
+			Import (certificate, cancellationToken);
+			return Task.FromResult (true);
+		}
+
+		/// <summary>
+		/// Import a certificate.
+		/// </summary>
+		/// <remarks>
+		/// Imports a certificate.
+		/// </remarks>
+		/// <param name="certificate">The certificate.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="certificate"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		public virtual void Import (X509Certificate2 certificate, CancellationToken cancellationToken = default)
+		{
+			throw new NotImplementedException ();
+		}
+
+		/// <summary>
+		/// Asynchronously import a certificate.
+		/// </summary>
+		/// <remarks>
+		/// Asynchronously imports a certificate.
+		/// </remarks>
+		/// <returns>An asynchronous task context.</returns>
+		/// <param name="certificate">The certificate.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="certificate"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		public virtual Task ImportAsync (X509Certificate2 certificate, CancellationToken cancellationToken = default)
+		{
+			Import (certificate, cancellationToken);
+			return Task.FromResult (true);
+		}
+
+		/// <summary>
+		/// Import a certificate revocation list.
+		/// </summary>
+		/// <remarks>
+		/// Imports a certificate revocation list.
 		/// </remarks>
 		/// <param name="crl">The certificate revocation list.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="crl"/> is <c>null</c>.
 		/// </exception>
-		public abstract void Import (X509Crl crl);
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		public abstract void Import (X509Crl crl, CancellationToken cancellationToken = default);
 
 		/// <summary>
-		/// Imports certificates (as from a certs-only application/pkcs-mime part)
+		/// Asynchronously import a certificate revocation list.
+		/// </summary>
+		/// <remarks>
+		/// Asynchronously imports a certificate revocation list.
+		/// </remarks>
+		/// <returns>An asynchronous task context.</returns>
+		/// <param name="crl">The certificate revocation list.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="crl"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		public virtual Task ImportAsync (X509Crl crl, CancellationToken cancellationToken = default)
+		{
+			Import (crl, cancellationToken);
+			return Task.FromResult (true);
+		}
+
+		async Task ImportAsync (Stream stream, bool doAsync, CancellationToken cancellationToken)
+		{
+			if (stream == null)
+				throw new ArgumentNullException (nameof (stream));
+
+			cancellationToken.ThrowIfCancellationRequested ();
+
+			using (var parser = new CmsSignedDataParser (stream)) {
+				var certificates = parser.GetCertificates ();
+
+				foreach (X509Certificate certificate in certificates.EnumerateMatches (null)) {
+					if (doAsync)
+						await ImportAsync (certificate, cancellationToken).ConfigureAwait (false);
+					else
+						Import (certificate, cancellationToken);
+				}
+
+				var crls = parser.GetCrls ();
+
+				foreach (X509Crl crl in crls.EnumerateMatches (null)) {
+					if (doAsync)
+						await ImportAsync (crl, cancellationToken).ConfigureAwait (false);
+					else
+						Import (crl, cancellationToken);
+				}
+			}
+		}
+
+		/// <summary>
+		/// Import certificates (as from a certs-only application/pkcs-mime part)
 		/// from the specified stream.
 		/// </summary>
 		/// <remarks>
@@ -816,27 +1305,44 @@ namespace MimeKit.Cryptography {
 		/// from the specified stream.
 		/// </remarks>
 		/// <param name="stream">The raw key data.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="stream"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
 		/// </exception>
 		/// <exception cref="Org.BouncyCastle.Cms.CmsException">
 		/// An error occurred in the cryptographic message syntax subsystem.
 		/// </exception>
-		public override void Import (Stream stream)
+		public override void Import (Stream stream, CancellationToken cancellationToken = default)
 		{
-			if (stream == null)
-				throw new ArgumentNullException (nameof (stream));
+			ImportAsync (stream, false, cancellationToken).GetAwaiter ().GetResult ();
+		}
 
-			var parser = new CmsSignedDataParser (stream);
-			var certificates = parser.GetCertificates ("Collection");
-
-			foreach (X509Certificate certificate in certificates.GetMatches (null))
-				Import (certificate);
-
-			var crls = parser.GetCrls ("Collection");
-
-			foreach (X509Crl crl in crls.GetMatches (null))
-				Import (crl);
+		/// <summary>
+		/// Asynchronously import certificates (as from a certs-only application/pkcs-mime part)
+		/// from the specified stream.
+		/// </summary>
+		/// <remarks>
+		/// Asynchronously imports certificates (as from a certs-only application/pkcs-mime part)
+		/// from the specified stream.
+		/// </remarks>
+		/// <returns>An asynchronous task context.</returns>
+		/// <param name="stream">The raw key data.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="stream"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		/// <exception cref="Org.BouncyCastle.Cms.CmsException">
+		/// An error occurred in the cryptographic message syntax subsystem.
+		/// </exception>
+		public override Task ImportAsync (Stream stream, CancellationToken cancellationToken = default)
+		{
+			return ImportAsync (stream, true, cancellationToken);
 		}
 	}
 }

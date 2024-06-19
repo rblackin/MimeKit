@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -25,7 +25,6 @@
 //
 
 using System;
-using System.Buffers;
 
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Math.EC.Rfc8032;
@@ -41,6 +40,11 @@ namespace MimeKit.Cryptography {
 		public Ed25519DigestSigner (IDigest digest)
 		{
 			this.digest = digest;
+		}
+
+		public int GetMaxSignatureSize ()
+		{
+			return Ed25519PrivateKeyParameters.SignatureSize;
 		}
 
 		public string AlgorithmName {
@@ -70,26 +74,30 @@ namespace MimeKit.Cryptography {
 			digest.BlockUpdate (input, inOff, length);
 		}
 
+#if NET6_0_OR_GREATER
+		/// <summary>Update the signer with a span of bytes.</summary>
+		/// <param name="input">the span containing the data.</param>
+		public void BlockUpdate (ReadOnlySpan<byte> input)
+		{
+			digest.BlockUpdate (input);
+		}
+#endif
+
 		public byte[] GenerateSignature ()
 		{
 			if (privateKey == null)
 				throw new InvalidOperationException ("Ed25519DigestSigner not initialised for signature generation.");
 
-			var hashLength = digest.GetDigestSize ();
-			var hash = ArrayPool<byte>.Shared.Rent (hashLength);
+			var hash = new byte[digest.GetDigestSize ()];
 
-			try {
-				digest.DoFinal (hash, 0);
+			digest.DoFinal (hash, 0);
 
-				var signature = new byte[Ed25519PrivateKeyParameters.SignatureSize];
-				privateKey.Sign (Ed25519.Algorithm.Ed25519, publicKey, null, hash, 0, hashLength, signature, 0);
+			var signature = new byte[Ed25519PrivateKeyParameters.SignatureSize];
+			privateKey.Sign (Ed25519.Algorithm.Ed25519, null, hash, 0, hash.Length, signature, 0);
 
-				Reset ();
+			Reset ();
 
-				return signature;
-			} finally {
-				ArrayPool<byte>.Shared.Return (hash);
-			}
+			return signature;
 		}
 
 		public bool VerifySignature (byte[] signature)
@@ -100,21 +108,16 @@ namespace MimeKit.Cryptography {
 			if (Ed25519.SignatureSize != signature.Length)
 				return false;
 
-			var hashLength = digest.GetDigestSize ();
-			var hash = ArrayPool<byte>.Shared.Rent (hashLength);
+			var hash = new byte[digest.GetDigestSize ()];
 
-			try {
-				digest.DoFinal (hash, 0);
+			digest.DoFinal (hash, 0);
 
-				var pk = publicKey.GetEncoded ();
-				var result = Ed25519.Verify (signature, 0, pk, 0, hash, 0, hashLength);
+			var pk = publicKey.GetEncoded ();
+			var result = Ed25519.Verify (signature, 0, pk, 0, hash, 0, hash.Length);
 
-				Reset ();
+			Reset ();
 
-				return result;
-			} finally {
-				ArrayPool<byte>.Shared.Return (hash);
-			}
+			return result;
 		}
 
 		public void Reset ()

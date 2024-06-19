@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -29,6 +29,8 @@ using System.Text;
 
 using Org.BouncyCastle.Bcpg.OpenPgp;
 
+using MimeKit.Utils;
+
 namespace MimeKit.Cryptography {
 	/// <summary>
 	/// An OpenPGP digital certificate.
@@ -41,7 +43,7 @@ namespace MimeKit.Cryptography {
 		internal OpenPgpDigitalCertificate (PgpPublicKeyRing keyring, PgpPublicKey pubkey)
 		{
 			var bytes = pubkey.GetFingerprint ();
-			var builder = new StringBuilder ();
+			var builder = new ValueStringBuilder (bytes.Length * 2);
 
 			for (int i = 0; i < bytes.Length; i++)
 				builder.Append (bytes[i].ToString ("X2"));
@@ -71,10 +73,9 @@ namespace MimeKit.Cryptography {
 		{
 			foreach (string userId in pubkey.GetUserIds ()) {
 				var bytes = Encoding.UTF8.GetBytes (userId);
-				MailboxAddress mailbox;
 				int index = 0;
 
-				if (!MailboxAddress.TryParse (ParserOptions.Default, bytes, ref index, bytes.Length, false, out mailbox))
+				if (!MailboxAddress.TryParse (ParserOptions.Default, bytes, ref index, bytes.Length, false, out var mailbox))
 					continue;
 
 				Email = mailbox.Address;

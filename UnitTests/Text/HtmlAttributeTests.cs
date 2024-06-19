@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,10 +24,6 @@
 // THE SOFTWARE.
 //
 
-using System;
-
-using NUnit.Framework;
-
 using MimeKit.Text;
 
 namespace UnitTests.Text {
@@ -41,9 +37,33 @@ namespace UnitTests.Text {
 			Assert.Throws<ArgumentNullException> (() => new HtmlAttribute (null, string.Empty));
 			Assert.Throws<ArgumentException> (() => new HtmlAttribute (string.Empty, string.Empty));
 			Assert.Throws<ArgumentException> (() => new HtmlAttribute ("a b c", string.Empty));
+		}
 
-			Assert.Throws<ArgumentNullException> (() => new HtmlAttribute (null));
-			Assert.Throws<ArgumentException> (() => new HtmlAttribute (string.Empty));
+		[Test]
+		public void TestToHtmlAttributeId ()
+		{
+			Assert.That ("".ToHtmlAttributeId (), Is.EqualTo (HtmlAttributeId.Unknown), "string.Empty");
+			Assert.That ("alt".ToHtmlAttributeId (), Is.EqualTo (HtmlAttributeId.Alt), "alt");
+			Assert.That ("Alt".ToHtmlAttributeId (), Is.EqualTo (HtmlAttributeId.Alt), "Alt");
+			Assert.That ("aLt".ToHtmlAttributeId (), Is.EqualTo (HtmlAttributeId.Alt), "aLt");
+			Assert.That ("ALT".ToHtmlAttributeId (), Is.EqualTo (HtmlAttributeId.Alt), "ALT");
+			Assert.That ("AlT".ToHtmlAttributeId (), Is.EqualTo (HtmlAttributeId.Alt), "AlT");
+
+			HtmlAttributeId parsed;
+			string name;
+
+			foreach (HtmlAttributeId value in Enum.GetValues (typeof (HtmlAttributeId))) {
+				if (value == HtmlAttributeId.Unknown)
+					continue;
+
+				name = value.ToAttributeName ().ToUpperInvariant ();
+				parsed = name.ToHtmlAttributeId ();
+
+				Assert.That (parsed, Is.EqualTo (value), $"Failed to parse the HtmlAttributeId value for {value}");
+			}
+
+			name = ((HtmlAttributeId) 1024).ToAttributeName ();
+			Assert.That (name, Is.EqualTo ("1024"), "ToAttributeName() for unknown value");
 		}
 	}
 }

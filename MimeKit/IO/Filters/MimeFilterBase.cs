@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -51,7 +51,7 @@ namespace MimeKit.IO.Filters {
 		}
 
 		/// <summary>
-		/// Gets the output buffer.
+		/// Get the output buffer.
 		/// </summary>
 		/// <remarks>
 		/// Gets the output buffer.
@@ -91,7 +91,7 @@ namespace MimeKit.IO.Filters {
 			// the input buffer, so make sure that we have room...
 			int totalLength = length + preloadLength;
 
-			if (inbuf == null || inbuf.Length < totalLength) {
+			if (inbuf is null || inbuf.Length < totalLength) {
 				// NOTE: Array.Resize() copies data, we don't need that (slower)
 				inbuf = new byte[GetIdealBufferSize (totalLength)];
 			}
@@ -111,7 +111,7 @@ namespace MimeKit.IO.Filters {
 
 		static void ValidateArguments (byte[] input, int startIndex, int length)
 		{
-			if (input == null)
+			if (input is null)
 				throw new ArgumentNullException (nameof (input));
 
 			if (startIndex < 0 || startIndex > input.Length)
@@ -122,7 +122,7 @@ namespace MimeKit.IO.Filters {
 		}
 		
 		/// <summary>
-		/// Filters the specified input.
+		/// Filter the specified input.
 		/// </summary>
 		/// <remarks>
 		/// Filters the specified input buffer starting at the given index,
@@ -151,7 +151,7 @@ namespace MimeKit.IO.Filters {
 		}
 		
 		/// <summary>
-		/// Filters the specified input, flushing all internally buffered data to the output.
+		/// Filter the specified input, flushing all internally buffered data to the output.
 		/// </summary>
 		/// <remarks>
 		/// Filters the specified input buffer starting at the given index,
@@ -180,7 +180,7 @@ namespace MimeKit.IO.Filters {
 		}
 
 		/// <summary>
-		/// Resets the filter.
+		/// Reset the filter.
 		/// </summary>
 		/// <remarks>
 		/// Resets the filter.
@@ -191,7 +191,7 @@ namespace MimeKit.IO.Filters {
 		}
 
 		/// <summary>
-		/// Saves the remaining input for the next round of processing.
+		/// Save the remaining input for the next round of processing.
 		/// </summary>
 		/// <remarks>
 		/// Saves the remaining input for the next round of processing.
@@ -204,7 +204,7 @@ namespace MimeKit.IO.Filters {
 			if (length == 0)
 				return;
 
-			if (preload == null || preload.Length < length)
+			if (preload is null || preload.Length < length)
 				preload = new byte[GetIdealBufferSize (length)];
 
 			Buffer.BlockCopy (input, startIndex, preload, 0, length);
@@ -212,7 +212,7 @@ namespace MimeKit.IO.Filters {
 		}
 
 		/// <summary>
-		/// Ensures that the output buffer is greater than or equal to the specified size.
+		/// Ensure that the output buffer is greater than or equal to the specified size.
 		/// </summary>
 		/// <remarks>
 		/// Ensures that the output buffer is greater than or equal to the specified size.

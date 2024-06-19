@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,13 +24,9 @@
 // THE SOFTWARE.
 //
 
-using System;
-using System.IO;
 using System.Text;
 
 using MimeKit.Text;
-
-using NUnit.Framework;
 
 namespace UnitTests.Text {
 	[TestFixture]
@@ -63,15 +59,15 @@ namespace UnitTests.Text {
 		{
 			var converter = new TextToText ();
 
-			Assert.IsFalse (converter.DetectEncodingFromByteOrderMark, "DetectEncodingFromByteOrderMark");
-			Assert.IsNull (converter.Footer, "Footer");
-			Assert.IsNull (converter.Header, "Header");
-			Assert.AreEqual (Encoding.UTF8, converter.InputEncoding, "InputEncoding");
-			Assert.AreEqual (TextFormat.Text, converter.InputFormat, "InputFormat");
-			Assert.AreEqual (Encoding.UTF8, converter.OutputEncoding, "OutputEncoding");
-			Assert.AreEqual (TextFormat.Text, converter.OutputFormat, "OutputFormat");
-			Assert.AreEqual (4096, converter.InputStreamBufferSize, "InputStreamBufferSize");
-			Assert.AreEqual (4096, converter.OutputStreamBufferSize, "OutputStreamBufferSize");
+			Assert.That (converter.DetectEncodingFromByteOrderMark, Is.False, "DetectEncodingFromByteOrderMark");
+			Assert.That (converter.Footer, Is.Null, "Footer");
+			Assert.That (converter.Header, Is.Null, "Header");
+			Assert.That (converter.InputEncoding, Is.EqualTo (Encoding.UTF8), "InputEncoding");
+			Assert.That (converter.InputFormat, Is.EqualTo (TextFormat.Text), "InputFormat");
+			Assert.That (converter.OutputEncoding, Is.EqualTo (Encoding.UTF8), "OutputEncoding");
+			Assert.That (converter.OutputFormat, Is.EqualTo (TextFormat.Text), "OutputFormat");
+			Assert.That (converter.InputStreamBufferSize, Is.EqualTo (4096), "InputStreamBufferSize");
+			Assert.That (converter.OutputStreamBufferSize, Is.EqualTo (4096), "OutputStreamBufferSize");
 		}
 
 		[Test]
@@ -82,7 +78,7 @@ namespace UnitTests.Text {
 			var converter = new TextToText { Header = "Header", Footer = "Footer" };
 			var result = converter.Convert (text);
 
-			Assert.AreEqual (expected, result);
+			Assert.That (result, Is.EqualTo (expected));
 		}
 
 		[Test]
@@ -97,7 +93,7 @@ namespace UnitTests.Text {
 			var converter = new TextToText ();
 			var result = converter.Convert (text);
 
-			Assert.AreEqual (expected, result);
+			Assert.That (result, Is.EqualTo (expected));
 		}
 	}
 }

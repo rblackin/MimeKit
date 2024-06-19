@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,14 +24,7 @@
 // THE SOFTWARE.
 //
 
-using System;
-using System.IO;
-using System.Linq;
-using System.Collections.Generic;
-
 using Org.BouncyCastle.X509;
-
-using NUnit.Framework;
 
 using MimeKit.Cryptography;
 
@@ -51,6 +44,7 @@ namespace UnitTests.Cryptography {
 		[Test]
 		public void TestArgumentExceptions ()
 		{
+			var rsa = SecureMimeTestsBase.SupportedCertificates.FirstOrDefault (c => c.PublicKeyAlgorithm == PublicKeyAlgorithm.RsaGeneral);
 			var store = new X509CertificateStore ();
 
 			Assert.Throws<ArgumentNullException> (() => store.Add (null));
@@ -66,8 +60,8 @@ namespace UnitTests.Cryptography {
 			Assert.Throws<ArgumentNullException> (() => store.Import ((string) null, "password"));
 			Assert.Throws<ArgumentNullException> (() => store.Import ((byte[]) null, "password"));
 			Assert.Throws<ArgumentNullException> (() => store.Import (Stream.Null, null));
-			Assert.Throws<ArgumentNullException> (() => store.Import (GetTestDataPath ("smime.p12"), null));
-			Assert.Throws<ArgumentNullException> (() => store.Import (new byte[0], null));
+			Assert.Throws<ArgumentNullException> (() => store.Import (rsa.FileName, null));
+			Assert.Throws<ArgumentNullException> (() => store.Import (Array.Empty<byte> (), null));
 			Assert.Throws<ArgumentNullException> (() => store.Import ((Stream) null));
 			Assert.Throws<ArgumentNullException> (() => store.Import ((string) null));
 			Assert.Throws<ArgumentNullException> (() => store.Import ((byte[]) null));
@@ -96,17 +90,17 @@ namespace UnitTests.Cryptography {
 
 			var count = store.Certificates.Count ();
 
-			Assert.AreEqual (CertificateAuthorities.Length, count, "Unexpected number of certificates after Add.");
+			Assert.That (count, Is.EqualTo (CertificateAuthorities.Length), "Unexpected number of certificates after Add.");
 
 			foreach (var certificate in certificates) {
 				var key = store.GetPrivateKey (certificate);
-				Assert.IsNull (key, "GetPrivateKey");
+				Assert.That (key, Is.Null, "GetPrivateKey");
 				store.Remove (certificate);
 			}
 
 			count = store.Certificates.Count ();
 
-			Assert.AreEqual (0, count, "Unexpected number of certificates after Remove.");
+			Assert.That (count, Is.EqualTo (0), "Unexpected number of certificates after Remove.");
 		}
 
 		[Test]
@@ -129,18 +123,18 @@ namespace UnitTests.Cryptography {
 
 			var count = store.Certificates.Count ();
 
-			Assert.AreEqual (CertificateAuthorities.Length, count, "Unexpected number of certificates after AddRange.");
+			Assert.That (count, Is.EqualTo (CertificateAuthorities.Length), "Unexpected number of certificates after AddRange.");
 
 			foreach (var certificate in certificates) {
 				var key = store.GetPrivateKey (certificate);
-				Assert.IsNull (key, "GetPrivateKey");
+				Assert.That (key, Is.Null, "GetPrivateKey");
 			}
 
 			store.RemoveRange (certificates);
 
 			count = store.Certificates.Count ();
 
-			Assert.AreEqual (0, count, "Unexpected number of certificates after RemoveRange.");
+			Assert.That (count, Is.EqualTo (0), "Unexpected number of certificates after RemoveRange.");
 		}
 
 		[Test]
@@ -152,8 +146,8 @@ namespace UnitTests.Cryptography {
 			var certificate = store.Certificates.FirstOrDefault ();
 			var count = store.Certificates.Count ();
 
-			Assert.AreEqual (1, count, "Unexpected number of certificates imported.");
-			Assert.AreEqual ("StartCom Certification Authority", certificate.GetCommonName (), "Unexpected CN for certificate.");
+			Assert.That (count, Is.EqualTo (1), "Unexpected number of certificates imported.");
+			Assert.That (certificate.GetCommonName (), Is.EqualTo ("StartCom Certification Authority"), "Unexpected CN for certificate.");
 		}
 
 		[Test]
@@ -165,8 +159,8 @@ namespace UnitTests.Cryptography {
 			var certificate = store.Certificates.FirstOrDefault ();
 			var count = store.Certificates.Count ();
 
-			Assert.AreEqual (1, count, "Unexpected number of certificates imported.");
-			Assert.AreEqual ("StartCom Certification Authority", certificate.GetCommonName (), "Unexpected CN for certificate.");
+			Assert.That (count, Is.EqualTo (1), "Unexpected number of certificates imported.");
+			Assert.That (certificate.GetCommonName (), Is.EqualTo ("StartCom Certification Authority"), "Unexpected CN for certificate.");
 		}
 
 		[Test]
@@ -179,42 +173,53 @@ namespace UnitTests.Cryptography {
 
 			var count = store.Certificates.Count ();
 
-			Assert.AreEqual (CertificateAuthorities.Length, count, "Unexpected number of certificates imported.");
+			Assert.That (count, Is.EqualTo (CertificateAuthorities.Length), "Unexpected number of certificates imported.");
 
-			store.Export ("exported.crt");
+			try {
+				store.Export ("exported.crt");
 
-			var imported = new X509CertificateStore ();
-			imported.Import ("exported.crt");
+				var imported = new X509CertificateStore ();
+				imported.Import ("exported.crt");
 
-			count = imported.Certificates.Count ();
+				count = imported.Certificates.Count ();
 
-			Assert.AreEqual (CertificateAuthorities.Length, count, "Unexpected number of certificates re-imported.");
+				Assert.That (count, Is.EqualTo (CertificateAuthorities.Length), "Unexpected number of certificates re-imported.");
+			} finally {
+				if (File.Exists ("exported.crt"))
+					File.Delete ("exported.crt");
+			}
 		}
 
 		[Test]
 		public void TestImportExportPkcs12 ()
 		{
+			var rsa = SecureMimeTestsBase.SupportedCertificates.FirstOrDefault (c => c.PublicKeyAlgorithm == PublicKeyAlgorithm.RsaGeneral);
 			var store = new X509CertificateStore ();
 
-			store.Import (GetTestDataPath ("smime.p12"), "no.secret");
+			store.Import (rsa.FileName, "no.secret");
 			var certificate = store.Certificates.FirstOrDefault ();
 			var count = store.Certificates.Count ();
 
-			Assert.AreEqual (3, count, "Unexpected number of certificates imported.");
-			Assert.IsNotNull (store.GetPrivateKey (certificate), "Failed to get private key.");
+			Assert.That (count, Is.EqualTo (4), "Unexpected number of certificates imported.");
+			Assert.That (store.GetPrivateKey (certificate), Is.Not.Null, "Failed to get private key.");
 
 			foreach (var authority in CertificateAuthorities)
 				store.Import (GetTestDataPath (authority));
 
-			store.Export ("exported.p12", "no.secret");
+			try {
+				store.Export ("exported.p12", "no.secret");
 
-			var imported = new X509CertificateStore ();
-			imported.Import ("exported.p12", "no.secret");
+				var imported = new X509CertificateStore ();
+				imported.Import ("exported.p12", "no.secret");
 
-			count = imported.Certificates.Count ();
+				count = imported.Certificates.Count ();
 
-			Assert.AreEqual (store.Certificates.Count (), count, "Unexpected number of certificates re-imported.");
-			Assert.IsNotNull (imported.GetPrivateKey (certificate), "Failed to get private key after re-importing.");
+				Assert.That (count, Is.EqualTo (store.Certificates.Count ()), "Unexpected number of certificates re-imported.");
+				Assert.That (imported.GetPrivateKey (certificate), Is.Not.Null, "Failed to get private key after re-importing.");
+			} finally {
+				if (File.Exists ("exported.p12"))
+					File.Delete ("exported.p12");
+			}
 		}
 	}
 }

@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,6 +23,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 //
+
+using System;
 
 namespace MimeKit.IO.Filters {
 	/// <summary>
@@ -48,30 +50,30 @@ namespace MimeKit.IO.Filters {
 			this.ensureNewLine = ensureNewLine;
 		}
 
-		unsafe int Filter (byte* inbuf, int length, byte* outbuf, bool flush)
+		int Filter (ReadOnlySpan<byte> input, byte[] output, bool flush)
 		{
-			byte* inend = inbuf + length;
-			byte* outptr = outbuf;
-			byte* inptr = inbuf;
+			int outputIndex = 0;
 
-			while (inptr < inend) {
-				if (*inptr == (byte) '\n') {
-					*outptr++ = *inptr;
+			foreach (var c in input) {
+				if (c == (byte) '\n') {
+					output[outputIndex++] = c;
 				} else {
 					if (pc == (byte) '\r')
-						*outptr++ = pc;
+						output[outputIndex++] = pc;
 
-					if (*inptr != (byte) '\r')
-						*outptr++ = *inptr;
+					if (c != (byte) '\r')
+						output[outputIndex++] = c;
 				}
 
-				pc = *inptr++;
+				pc = c;
 			}
 
-			if (flush && ensureNewLine && pc != (byte) '\n')
-				*outptr++ = (byte) '\n';
+			if (flush && ensureNewLine && pc != (byte) '\n') {
+				output[outputIndex++] = (byte) '\n';
+				pc = (byte) '\n';
+			}
 
-			return (int) (outptr - outbuf);
+			return outputIndex;
 		}
 
 		/// <summary>
@@ -95,19 +97,14 @@ namespace MimeKit.IO.Filters {
 			else
 				EnsureOutputSize (length + (flush && ensureNewLine ? 1 : 0), false);
 
+			outputLength = Filter (input.AsSpan (startIndex, length), OutputBuffer, flush);
 			outputIndex = 0;
-
-			unsafe {
-				fixed (byte* inptr = input, outptr = OutputBuffer) {
-					outputLength = Filter (inptr + startIndex, length, outptr, flush);
-				}
-			}
 
 			return OutputBuffer;
 		}
 
 		/// <summary>
-		/// Resets the filter.
+		/// Reset the filter.
 		/// </summary>
 		/// <remarks>
 		/// Resets the filter.

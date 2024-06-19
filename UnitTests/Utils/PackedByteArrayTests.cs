@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,10 +23,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 //
-
-using System;
-
-using NUnit.Framework;
 
 using MimeKit.Utils;
 
@@ -66,12 +62,22 @@ namespace UnitTests.Utils {
 				packed.Add ((byte) 'B');
 			}
 
-			Assert.AreEqual (index, packed.Count, "Count");
+			for (int i = 0; i < 26; i++) {
+				expected[index++] = (byte) ('A' + i);
+				packed.Add ((byte) ('A' + i));
+			}
+
+			for (int i = 0; i < 26; i++) {
+				expected[index++] = (byte) ('A' + i);
+				packed.Add ((byte) ('A' + i));
+			}
+
+			Assert.That (packed.Count, Is.EqualTo (index), "Count");
 
 			packed.CopyTo (buffer, 0);
 
 			for (int i = 0; i < index; i++)
-				Assert.AreEqual (expected[i], buffer[i], "buffer[{0}]", i);
+				Assert.That (buffer[i], Is.EqualTo (expected[i]), $"buffer[{i}]");
 		}
 	}
 }

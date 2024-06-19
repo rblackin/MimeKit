@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -5531,7 +5531,7 @@ namespace MimeKit.Tnef {
 		readonly TnefPropertyId id;
 
 		/// <summary>
-		/// Gets the property identifier.
+		/// Get the property identifier.
 		/// </summary>
 		/// <remarks>
 		/// Gets the property identifier.
@@ -5542,7 +5542,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets a value indicating whether or not the property contains multiple values.
+		/// Get a value indicating whether or not the property contains multiple values.
 		/// </summary>
 		/// <remarks>
 		/// Gets a value indicating whether or not the property contains multiple values.
@@ -5553,7 +5553,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets a value indicating whether or not the property has a special name.
+		/// Get a value indicating whether or not the property has a special name.
 		/// </summary>
 		/// <remarks>
 		/// Gets a value indicating whether or not the property has a special name.
@@ -5564,7 +5564,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets a value indicating whether the property value type is valid.
+		/// Get a value indicating whether the property value type is valid.
 		/// </summary>
 		/// <remarks>
 		/// Gets a value indicating whether the property value type is valid.
@@ -5598,7 +5598,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the property's value type (including the multi-valued bit).
+		/// Get the property's value type (including the multi-valued bit).
 		/// </summary>
 		/// <remarks>
 		/// Gets the property's value type (including the multi-valued bit).
@@ -5609,7 +5609,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the type of the value that the property contains.
+		/// Get the type of the value that the property contains.
 		/// </summary>
 		/// <remarks>
 		/// Gets the type of the value that the property contains.
@@ -5655,7 +5655,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Casts an integer tag value into a TNEF property tag.
+		/// Cast an integer tag value into a TNEF property tag.
 		/// </summary>
 		/// <remarks>
 		/// Casts an integer tag value into a TNEF property tag.
@@ -5668,7 +5668,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Casts a TNEF property tag into a 32-bit integer value.
+		/// Cast a TNEF property tag into a 32-bit integer value.
 		/// </summary>
 		/// <remarks>
 		/// Casts a TNEF property tag into a 32-bit integer value.
@@ -5694,7 +5694,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Determines whether the specified <see cref="System.Object"/> is equal to the current <see cref="TnefPropertyTag"/>.
+		/// Determine whether the specified <see cref="System.Object"/> is equal to the current <see cref="TnefPropertyTag"/>.
 		/// </summary>
 		/// <remarks>
 		/// Determines whether the specified <see cref="System.Object"/> is equal to the current <see cref="TnefPropertyTag"/>.
@@ -5704,16 +5704,13 @@ namespace MimeKit.Tnef {
 		/// <see cref="TnefPropertyTag"/>; otherwise, <c>false</c>.</returns>
 		public override bool Equals (object obj)
 		{
-			if (!(obj is TnefPropertyTag))
-				return false;
-
-			var tag = (TnefPropertyTag) obj;
-
-			return tag.Id == Id && tag.TnefType == TnefType;
+			return obj is TnefPropertyTag tag
+				&& tag.Id == Id 
+				&& tag.TnefType == TnefType;
 		}
 
 		/// <summary>
-		/// Returns a <see cref="System.String"/> that represents the current <see cref="TnefPropertyTag"/>.
+		/// Return a <see cref="System.String"/> that represents the current <see cref="TnefPropertyTag"/>.
 		/// </summary>
 		/// <remarks>
 		/// Returns a <see cref="System.String"/> that represents the current <see cref="TnefPropertyTag"/>.
@@ -5721,11 +5718,11 @@ namespace MimeKit.Tnef {
 		/// <returns>A <see cref="System.String"/> that represents the current <see cref="TnefPropertyTag"/>.</returns>
 		public override string ToString ()
 		{
-			return string.Format ("{0} ({1})", Id, ValueTnefType);
+			return $"{Id} ({ValueTnefType})";
 		}
 
 		/// <summary>
-		/// Returns a new <see cref="TnefPropertyTag"/> where the type has been changed to <see cref="TnefPropertyType.Unicode"/>.
+		/// Return a new <see cref="TnefPropertyTag"/> where the type has been changed to <see cref="TnefPropertyType.Unicode"/>.
 		/// </summary>
 		/// <remarks>
 		/// Returns a new <see cref="TnefPropertyTag"/> where the type has been changed to <see cref="TnefPropertyType.Unicode"/>.
@@ -5736,6 +5733,34 @@ namespace MimeKit.Tnef {
 			var unicode = (TnefPropertyType) ((((short) type) & MultiValuedFlag) | ((short) TnefPropertyType.Unicode));
 
 			return new TnefPropertyTag (id, unicode);
+		}
+
+		/// <summary>
+		/// Compare two <see cref="TnefPropertyTag"/> objects for equality.
+		/// </summary>
+		/// <remarks>
+		/// Compares two <see cref="TnefPropertyTag"/> objects for equality.
+		/// </remarks>
+		/// <param name="left">The first object to compare.</param>
+		/// <param name="right">The second object to compare.</param>
+		/// <returns><c>true</c> if <paramref name="left"/> and <paramref name="right"/> are equal; otherwise, <c>false</c>.</returns>
+		public static bool operator == (TnefPropertyTag left, TnefPropertyTag right)
+		{
+			return left.Equals (right);
+		}
+
+		/// <summary>
+		/// Compare two <see cref="TnefPropertyTag"/> objects for inequality.
+		/// </summary>
+		/// <remarks>
+		/// Compares two <see cref="TnefPropertyTag"/> objects for inequality.
+		/// </remarks>
+		/// <param name="left">The first object to compare.</param>
+		/// <param name="right">The second object to compare.</param>
+		/// <returns><c>true</c> if <paramref name="left"/> and <paramref name="right"/> are unequal; otherwise, <c>false</c>.</returns>
+		public static bool operator != (TnefPropertyTag left, TnefPropertyTag right)
+		{
+			return !(left == right);
 		}
 	}
 }

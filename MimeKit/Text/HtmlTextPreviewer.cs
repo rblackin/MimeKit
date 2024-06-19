@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -146,7 +146,7 @@ namespace MimeKit.Text {
 			return lastIndex >= 0 && stack[lastIndex].SuppressInnerContent;
 		}
 
-		HtmlTagContext GetListItemContext (IList<HtmlTagContext> stack)
+		static HtmlTagContext GetListItemContext (IList<HtmlTagContext> stack)
 		{
 			for (int i = stack.Count; i > 0; i--) {
 				var ctx = stack[i - 1];
@@ -171,7 +171,7 @@ namespace MimeKit.Text {
 		/// </exception>
 		public override string GetPreviewText (TextReader reader)
 		{
-			if (reader == null)
+			if (reader is null)
 				throw new ArgumentNullException (nameof (reader));
 
 			var tokenizer = new HtmlTokenizer (reader) { IgnoreTruncatedTags = true };
@@ -184,9 +184,8 @@ namespace MimeKit.Text {
 			bool body = false;
 			bool full = false;
 			bool lwsp = true;
-			HtmlToken token;
 
-			while (!full && tokenizer.ReadNextToken (out token)) {
+			while (!full && tokenizer.ReadNextToken (out var token)) {
 				switch (token.Kind) {
 				case HtmlTokenKind.Tag:
 					var tag = (HtmlTagToken) token;

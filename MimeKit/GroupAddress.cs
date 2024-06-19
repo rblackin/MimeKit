@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -115,7 +115,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets the members of the group.
+		/// Get the members of the group.
 		/// </summary>
 		/// <remarks>
 		/// <para>Represents the member addresses of the group. If the group address properly conforms
@@ -137,8 +137,7 @@ namespace MimeKit {
 				string name;
 
 				if (!options.International) {
-					var encoded = Rfc2047.EncodePhrase (options, Encoding, Name);
-					name = Encoding.ASCII.GetString (encoded, 0, encoded.Length);
+					name = Rfc2047.EncodePhraseAsString (options, Encoding, Name);
 				} else {
 					name = EncodeInternationalizedPhrase (Name);
 				}
@@ -175,7 +174,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Returns a string representation of the <see cref="GroupAddress"/>,
+		/// Return a string representation of the <see cref="GroupAddress"/>,
 		/// optionally encoding it for transport.
 		/// </summary>
 		/// <remarks>
@@ -192,7 +191,7 @@ namespace MimeKit {
 		/// </exception>
 		public override string ToString (FormatOptions options, bool encode)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
 			var builder = new StringBuilder ();
@@ -222,7 +221,7 @@ namespace MimeKit {
 		#region IEquatable implementation
 
 		/// <summary>
-		/// Determines whether the specified <see cref="GroupAddress"/> is equal to the current <see cref="GroupAddress"/>.
+		/// Determine whether the specified <see cref="GroupAddress"/> is equal to the current <see cref="GroupAddress"/>.
 		/// </summary>
 		/// <remarks>
 		/// Compares two group addresses to determine if they are identical or not.
@@ -232,9 +231,7 @@ namespace MimeKit {
 		/// <see cref="GroupAddress"/>; otherwise, <c>false</c>.</returns>
 		public override bool Equals (InternetAddress other)
 		{
-			var group = other as GroupAddress;
-
-			if (group == null)
+			if (other is not GroupAddress group)
 				return false;
 
 			return Name == group.Name && Members.Equals (group.Members);
@@ -250,12 +247,11 @@ namespace MimeKit {
 		static bool TryParse (ParserOptions options, byte[] text, ref int index, int endIndex, bool throwOnError, out GroupAddress group)
 		{
 			var flags = AddressParserFlags.AllowGroupAddress;
-			InternetAddress address;
 
 			if (throwOnError)
 				flags |= AddressParserFlags.ThrowOnError;
 
-			if (!InternetAddress.TryParse (options, text, ref index, endIndex, 0, flags, out address)) {
+			if (!InternetAddress.TryParse (flags, options, text, ref index, endIndex, 0, out var address)) {
 				group = null;
 				return false;
 			}
@@ -457,10 +453,10 @@ namespace MimeKit {
 		/// </exception>
 		public static bool TryParse (ParserOptions options, string text, out GroupAddress group)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (text == null)
+			if (text is null)
 				throw new ArgumentNullException (nameof (text));
 
 			var buffer = Encoding.UTF8.GetBytes (text);
@@ -526,10 +522,8 @@ namespace MimeKit {
 
 			int endIndex = startIndex + length;
 			int index = startIndex;
-			GroupAddress group;
 
-			if (!TryParse (options, buffer, ref index, endIndex, true, out group))
-				throw new ParseException ("No group address found.", startIndex, startIndex);
+			TryParse (options, buffer, ref index, endIndex, true, out var group);
 
 			ParseUtils.SkipCommentsAndWhiteSpace (buffer, ref index, endIndex, true);
 
@@ -593,10 +587,8 @@ namespace MimeKit {
 
 			int endIndex = buffer.Length;
 			int index = startIndex;
-			GroupAddress group;
 
-			if (!TryParse (options, buffer, ref index, endIndex, true, out group))
-				throw new ParseException ("No group address found.", startIndex, startIndex);
+			TryParse (options, buffer, ref index, endIndex, true, out var group);
 
 			ParseUtils.SkipCommentsAndWhiteSpace (buffer, ref index, endIndex, true);
 
@@ -653,11 +645,9 @@ namespace MimeKit {
 			ParseUtils.ValidateArguments (options, buffer);
 
 			int endIndex = buffer.Length;
-			GroupAddress group;
 			int index = 0;
 
-			if (!TryParse (options, buffer, ref index, endIndex, true, out group))
-				throw new ParseException ("No group address found.", 0, 0);
+			TryParse (options, buffer, ref index, endIndex, true, out var group);
 
 			ParseUtils.SkipCommentsAndWhiteSpace (buffer, ref index, endIndex, true);
 
@@ -707,19 +697,17 @@ namespace MimeKit {
 		/// </exception>
 		public static new GroupAddress Parse (ParserOptions options, string text)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (text == null)
+			if (text is null)
 				throw new ArgumentNullException (nameof (text));
 
 			var buffer = Encoding.UTF8.GetBytes (text);
 			int endIndex = buffer.Length;
-			GroupAddress group;
 			int index = 0;
 
-			if (!TryParse (options, buffer, ref index, endIndex, true, out group))
-				throw new ParseException ("No group address found.", 0, 0);
+			TryParse (options, buffer, ref index, endIndex, true, out var group);
 
 			ParseUtils.SkipCommentsAndWhiteSpace (buffer, ref index, endIndex, true);
 

@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -96,6 +96,7 @@ namespace MimeKit.Cryptography {
 		/// single 256-octet string in a TXT record, and RSA keys significantly longer than 1024
 		/// bits don't fit in 256 octets.</note>
 		/// </remarks>
+		/// <value>The minimum allowed RSA key length.</value>
 		public int MinimumRsaKeyLength {
 			get; set;
 		}
@@ -183,7 +184,7 @@ namespace MimeKit.Cryptography {
 				if (index >= signature.Length)
 					continue;
 
-				var name = signature.Substring (startIndex, index - startIndex).TrimEnd ();
+				var name = signature.AsSpan (startIndex, index - startIndex).TrimEnd ().ToString ();
 
 				// skip over '=' and clear value buffer
 				value.Length = 0;
@@ -242,7 +243,7 @@ namespace MimeKit.Cryptography {
 				throw new FormatException (string.Format ("Malformed {0} header: empty signature parameter detected.", header));
 
 			if (parameters.TryGetValue ("t", out string t)) {
-				if (!int.TryParse (t, NumberStyles.Integer, CultureInfo.InvariantCulture, out int timestamp) || timestamp < 0)
+				if (!int.TryParse (t, NumberStyles.None, CultureInfo.InvariantCulture, out int timestamp) || timestamp < 0)
 					throw new FormatException (string.Format ("Malformed {0} header: invalid timestamp parameter: t={1}.", header, t));
 			}
 		}
@@ -253,7 +254,7 @@ namespace MimeKit.Cryptography {
 			ValidateCommonParameters (header, parameters, out algorithm, out d, out s, out q, out b);
 
 			if (parameters.TryGetValue ("l", out string l)) {
-				if (!int.TryParse (l, NumberStyles.Integer, CultureInfo.InvariantCulture, out maxLength) || maxLength < 0)
+				if (!int.TryParse (l, NumberStyles.None, CultureInfo.InvariantCulture, out maxLength) || maxLength < 0)
 					throw new FormatException (string.Format ("Malformed {0} header: invalid length parameter: l={1}", header, l));
 			} else {
 				maxLength = -1;
@@ -405,9 +406,9 @@ namespace MimeKit.Cryptography {
 			for (int i = 0; i < fields.Count; i++) {
 				var headers = fields[i].StartsWith ("Content-", StringComparison.OrdinalIgnoreCase) ? message.Body.Headers : message.Headers;
 				var name = fields[i].ToLowerInvariant ();
-				int index, count, n = 0;
+				int index, n = 0;
 
-				if (!counts.TryGetValue (name, out count))
+				if (!counts.TryGetValue (name, out var count))
 					count = 0;
 
 				// Note: signers choosing to sign an existing header field that occurs more
@@ -506,7 +507,7 @@ namespace MimeKit.Cryptography {
 		/// <param name="maxLength">The max length of the message body to hash or <c>-1</c> to hash the entire message body.</param>
 		/// <param name="bodyHash">The expected message body hash encoded in base64.</param>
 		/// <returns><c>true</c> if the calculated body hash matches <paramref name="bodyHash"/>; otherwise, <c>false</c>.</returns>
-		protected bool VerifyBodyHash (FormatOptions options, MimeMessage message, DkimSignatureAlgorithm signatureAlgorithm, DkimCanonicalizationAlgorithm canonicalizationAlgorithm, int maxLength, string bodyHash)
+		protected static bool VerifyBodyHash (FormatOptions options, MimeMessage message, DkimSignatureAlgorithm signatureAlgorithm, DkimCanonicalizationAlgorithm canonicalizationAlgorithm, int maxLength, string bodyHash)
 		{
 			var hash = Convert.ToBase64String (message.HashBody (options, signatureAlgorithm, canonicalizationAlgorithm, maxLength));
 

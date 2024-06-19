@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -26,7 +26,6 @@
 
 using System;
 using System.IO;
-using System.Text;
 using System.Globalization;
 
 namespace MimeKit.Text {
@@ -38,6 +37,20 @@ namespace MimeKit.Text {
 	/// </remarks>
 	public static class HtmlUtils
 	{
+#if NETSTANDARD2_0 || NETFRAMEWORK
+		static void Write (this TextWriter writer, ReadOnlySpan<char> value)
+		{
+			char[] buffer = System.Buffers.ArrayPool<char>.Shared.Rent (value.Length);
+
+			try {
+				value.CopyTo (new Span<char> (buffer));
+				writer.Write (buffer, 0, value.Length);
+			} finally {
+				System.Buffers.ArrayPool<char>.Shared.Return (buffer);
+			}
+		}
+#endif
+
 		internal static bool IsValidTokenName (string name)
 		{
 			if (string.IsNullOrEmpty (name))
@@ -55,9 +68,9 @@ namespace MimeKit.Text {
 			return true;
 		}
 
-		static int IndexOfHtmlEncodeAttributeChar (ICharArray value, int startIndex, int endIndex, char quote)
+		static int IndexOfHtmlEncodeAttributeChar (ReadOnlySpan<char> value, char quote)
 		{
-			for (int i = startIndex; i < endIndex; i++) {
+			for (int i = 0; i < value.Length; i++) {
 				char c = value[i];
 
 				switch (c) {
@@ -71,28 +84,42 @@ namespace MimeKit.Text {
 				}
 			}
 
-			return endIndex;
+			return value.Length;
 		}
 
-		static void HtmlAttributeEncode (TextWriter output, ICharArray value, int startIndex, int count, char quote = '"')
+		/// <summary>
+		/// Encode an HTML attribute value.
+		/// </summary>
+		/// <remarks>
+		/// Encodes an HTML attribute value.
+		/// </remarks>
+		/// <param name="output">The <see cref="System.IO.TextWriter"/> to output the result.</param>
+		/// <param name="value">The attribute value to encode.</param>
+		/// <param name="quote">The character to use for quoting the attribute value.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <para><paramref name="output"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="value"/> is <c>null</c>.</para>
+		/// </exception>
+		/// <exception cref="System.ArgumentException">
+		/// <paramref name="quote"/> is not a valid quote character.
+		/// </exception>
+		public static void HtmlAttributeEncode (TextWriter output, ReadOnlySpan<char> value, char quote = '"')
 		{
-			int endIndex = startIndex + count;
-			int index;
+			if (output is null)
+				throw new ArgumentNullException (nameof (output));
 
-			index = IndexOfHtmlEncodeAttributeChar (value, startIndex, endIndex, quote);
+			if (quote != '"' && quote != '\'')
+				throw new ArgumentException ("The quote character must either be '\"' or '\''.", nameof (quote));
+
+			int index = IndexOfHtmlEncodeAttributeChar (value, quote);
 
 			output.Write (quote);
 
-			if (index == endIndex) {
-				value.Write (output, startIndex, count);
-				output.Write (quote);
-				return;
-			}
+			if (index > 0)
+				output.Write (value.Slice (0, index));
 
-			if (index > startIndex)
-				value.Write (output, startIndex, index - startIndex);
-
-			while (index < endIndex) {
+			while (index < value.Length) {
 				char c = value[index++];
 				int unichar;
 
@@ -110,7 +137,7 @@ namespace MimeKit.Text {
 					}
 
 					if (c > 255 && char.IsSurrogate (c)) {
-						if (index < endIndex && char.IsSurrogatePair (c, value[index])) {
+						if (index < value.Length && char.IsSurrogatePair (c, value[index])) {
 							unichar = char.ConvertToUtf32 (c, value[index]);
 							index++;
 						} else {
@@ -139,6 +166,32 @@ namespace MimeKit.Text {
 		/// <remarks>
 		/// Encodes an HTML attribute value.
 		/// </remarks>
+		/// <returns>The encoded attribute value.</returns>
+		/// <param name="value">The attribute value to encode.</param>
+		/// <param name="quote">The character to use for quoting the attribute value.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="value"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.ArgumentException">
+		/// <paramref name="quote"/> is not a valid quote character.
+		/// </exception>
+		public static string HtmlAttributeEncode (ReadOnlySpan<char> value, char quote = '"')
+		{
+			if (quote != '"' && quote != '\'')
+				throw new ArgumentException ("The quote character must either be '\"' or '\''.", nameof (quote));
+
+			using (var output = new StringWriter ()) {
+				HtmlAttributeEncode (output, value, quote);
+				return output.ToString ();
+			}
+		}
+
+		/// <summary>
+		/// Encode an HTML attribute value.
+		/// </summary>
+		/// <remarks>
+		/// Encodes an HTML attribute value.
+		/// </remarks>
 		/// <param name="output">The <see cref="System.IO.TextWriter"/> to output the result.</param>
 		/// <param name="value">The attribute value to encode.</param>
 		/// <param name="startIndex">The starting index of the attribute value.</param>
@@ -158,10 +211,10 @@ namespace MimeKit.Text {
 		/// </exception>
 		public static void HtmlAttributeEncode (TextWriter output, char[] value, int startIndex, int count, char quote = '"')
 		{
-			if (output == null)
+			if (output is null)
 				throw new ArgumentNullException (nameof (output));
 
-			if (value == null)
+			if (value is null)
 				throw new ArgumentNullException (nameof (value));
 
 			if (startIndex < 0 || startIndex >= value.Length)
@@ -173,7 +226,7 @@ namespace MimeKit.Text {
 			if (quote != '"' && quote != '\'')
 				throw new ArgumentException ("The quote character must either be '\"' or '\''.", nameof (quote));
 
-			HtmlAttributeEncode (output, new CharArray (value), startIndex, count, quote);
+			HtmlAttributeEncode (output, value.AsSpan (startIndex, count), quote);
 		}
 
 		/// <summary>
@@ -199,7 +252,7 @@ namespace MimeKit.Text {
 		/// </exception>
 		public static string HtmlAttributeEncode (char[] value, int startIndex, int count, char quote = '"')
 		{
-			if (value == null)
+			if (value is null)
 				throw new ArgumentNullException (nameof (value));
 
 			if (startIndex < 0 || startIndex >= value.Length)
@@ -211,12 +264,7 @@ namespace MimeKit.Text {
 			if (quote != '"' && quote != '\'')
 				throw new ArgumentException ("The quote character must either be '\"' or '\''.", nameof (quote));
 
-			var encoded = new StringBuilder ();
-
-			using (var output = new StringWriter (encoded))
-				HtmlAttributeEncode (output, new CharArray (value), startIndex, count, quote);
-
-			return encoded.ToString ();
+			return HtmlAttributeEncode (value.AsSpan (startIndex, count), quote);
 		}
 
 		/// <summary>
@@ -244,10 +292,10 @@ namespace MimeKit.Text {
 		/// </exception>
 		public static void HtmlAttributeEncode (TextWriter output, string value, int startIndex, int count, char quote = '"')
 		{
-			if (output == null)
+			if (output is null)
 				throw new ArgumentNullException (nameof (output));
 
-			if (value == null)
+			if (value is null)
 				throw new ArgumentNullException (nameof (value));
 
 			if (startIndex < 0 || startIndex >= value.Length)
@@ -259,38 +307,7 @@ namespace MimeKit.Text {
 			if (quote != '"' && quote != '\'')
 				throw new ArgumentException ("The quote character must either be '\"' or '\''.", nameof (quote));
 
-			HtmlAttributeEncode (output, new CharString (value), startIndex, count, quote);
-		}
-
-		/// <summary>
-		/// Encode an HTML attribute value.
-		/// </summary>
-		/// <remarks>
-		/// Encodes an HTML attribute value.
-		/// </remarks>
-		/// <param name="output">The <see cref="System.IO.TextWriter"/> to output the result.</param>
-		/// <param name="value">The attribute value to encode.</param>
-		/// <param name="quote">The character to use for quoting the attribute value.</param>
-		/// <exception cref="System.ArgumentNullException">
-		/// <para><paramref name="output"/> is <c>null</c>.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="value"/> is <c>null</c>.</para>
-		/// </exception>
-		/// <exception cref="System.ArgumentException">
-		/// <paramref name="quote"/> is not a valid quote character.
-		/// </exception>
-		public static void HtmlAttributeEncode (TextWriter output, string value, char quote = '"')
-		{
-			if (output == null)
-				throw new ArgumentNullException (nameof (output));
-
-			if (value == null)
-				throw new ArgumentNullException (nameof (value));
-
-			if (quote != '"' && quote != '\'')
-				throw new ArgumentException ("The quote character must either be '\"' or '\''.", nameof (quote));
-
-			HtmlAttributeEncode (output, new CharString (value), 0, value.Length, quote);
+			HtmlAttributeEncode (output, value.AsSpan (startIndex, count), quote);
 		}
 
 		/// <summary>
@@ -316,7 +333,7 @@ namespace MimeKit.Text {
 		/// </exception>
 		public static string HtmlAttributeEncode (string value, int startIndex, int count, char quote = '"')
 		{
-			if (value == null)
+			if (value is null)
 				throw new ArgumentNullException (nameof (value));
 
 			if (startIndex < 0 || startIndex >= value.Length)
@@ -328,12 +345,38 @@ namespace MimeKit.Text {
 			if (quote != '"' && quote != '\'')
 				throw new ArgumentException ("The quote character must either be '\"' or '\''.", nameof (quote));
 
-			var encoded = new StringBuilder ();
+			return HtmlAttributeEncode (value.AsSpan (startIndex, count), quote);
+		}
 
-			using (var output = new StringWriter (encoded))
-				HtmlAttributeEncode (output, new CharString (value), startIndex, count, quote);
+		/// <summary>
+		/// Encode an HTML attribute value.
+		/// </summary>
+		/// <remarks>
+		/// Encodes an HTML attribute value.
+		/// </remarks>
+		/// <param name="output">The <see cref="System.IO.TextWriter"/> to output the result.</param>
+		/// <param name="value">The attribute value to encode.</param>
+		/// <param name="quote">The character to use for quoting the attribute value.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <para><paramref name="output"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="value"/> is <c>null</c>.</para>
+		/// </exception>
+		/// <exception cref="System.ArgumentException">
+		/// <paramref name="quote"/> is not a valid quote character.
+		/// </exception>
+		public static void HtmlAttributeEncode (TextWriter output, string value, char quote = '"')
+		{
+			if (output is null)
+				throw new ArgumentNullException (nameof (output));
 
-			return encoded.ToString ();
+			if (value is null)
+				throw new ArgumentNullException (nameof (value));
+
+			if (quote != '"' && quote != '\'')
+				throw new ArgumentException ("The quote character must either be '\"' or '\''.", nameof (quote));
+
+			HtmlAttributeEncode (output, value.AsSpan (), quote);
 		}
 
 		/// <summary>
@@ -353,24 +396,19 @@ namespace MimeKit.Text {
 		/// </exception>
 		public static string HtmlAttributeEncode (string value, char quote = '"')
 		{
-			if (value == null)
+			if (value is null)
 				throw new ArgumentNullException (nameof (value));
 
 			if (quote != '"' && quote != '\'')
 				throw new ArgumentException ("The quote character must either be '\"' or '\''.", nameof (quote));
 
-			var encoded = new StringBuilder ();
-
-			using (var output = new StringWriter (encoded))
-				HtmlAttributeEncode (output, new CharString (value), 0, value.Length, quote);
-
-			return encoded.ToString ();
+			return HtmlAttributeEncode (value.AsSpan (), quote);
 		}
 
-		static int IndexOfHtmlEncodeChar (ICharArray value, int startIndex, int endIndex)
+		static int IndexOfHtmlEncodeChar (ReadOnlySpan<char> data)
 		{
-			for (int i = startIndex; i < endIndex; i++) {
-				char c = value[i];
+			for (int i = 0; i < data.Length; i++) {
+				char c = data[i];
 
 				switch (c) {
 				case '\t': case '\r': case '\n': case '\f': break;
@@ -383,20 +421,33 @@ namespace MimeKit.Text {
 				}
 			}
 
-			return endIndex;
+			return data.Length;
 		}
 
-		static void HtmlEncode (TextWriter output, ICharArray data, int startIndex, int count)
+		/// <summary>
+		/// Encode HTML character data.
+		/// </summary>
+		/// <remarks>
+		/// Encodes HTML character data.
+		/// </remarks>
+		/// <param name="output">The <see cref="System.IO.TextWriter"/> to output the result.</param>
+		/// <param name="data">The character data to encode.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <para><paramref name="output"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="data"/> is <c>null</c>.</para>
+		/// </exception>
+		public static void HtmlEncode (TextWriter output, ReadOnlySpan<char> data)
 		{
-			int endIndex = startIndex + count;
-			int index;
+			if (output is null)
+				throw new ArgumentNullException (nameof (output));
 
-			index = IndexOfHtmlEncodeChar (data, startIndex, endIndex);
+			int index = IndexOfHtmlEncodeChar (data);
 
-			if (index > startIndex)
-				data.Write (output, startIndex, index - startIndex);
+			if (index > 0)
+				output.Write (data.Slice (0, index));
 
-			while (index < endIndex) {
+			while (index < data.Length) {
 				char c = data[index++];
 				int unichar;
 
@@ -414,7 +465,7 @@ namespace MimeKit.Text {
 					}
 
 					if (c > 255 && char.IsSurrogate (c)) {
-						if (index < endIndex && char.IsSurrogatePair (c, data[index])) {
+						if (index < data.Length && char.IsSurrogatePair (c, data[index])) {
 							unichar = char.ConvertToUtf32 (c, data[index]);
 							index++;
 						} else {
@@ -441,6 +492,25 @@ namespace MimeKit.Text {
 		/// <remarks>
 		/// Encodes HTML character data.
 		/// </remarks>
+		/// <returns>The encoded character data.</returns>
+		/// <param name="data">The character data to encode.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="data"/> is <c>null</c>.
+		/// </exception>
+		public static string HtmlEncode (ReadOnlySpan<char> data)
+		{
+			using (var output = new StringWriter ()) {
+				HtmlEncode (output, data);
+				return output.ToString ();
+			}
+		}
+
+		/// <summary>
+		/// Encode HTML character data.
+		/// </summary>
+		/// <remarks>
+		/// Encodes HTML character data.
+		/// </remarks>
 		/// <param name="output">The <see cref="System.IO.TextWriter"/> to output the result.</param>
 		/// <param name="data">The character data to encode.</param>
 		/// <param name="startIndex">The starting index of the character data.</param>
@@ -456,10 +526,10 @@ namespace MimeKit.Text {
 		/// </exception>
 		public static void HtmlEncode (TextWriter output, char[] data, int startIndex, int count)
 		{
-			if (output == null)
+			if (output is null)
 				throw new ArgumentNullException (nameof (output));
 
-			if (data == null)
+			if (data is null)
 				throw new ArgumentNullException (nameof (data));
 
 			if (startIndex < 0 || startIndex >= data.Length)
@@ -468,7 +538,7 @@ namespace MimeKit.Text {
 			if (count < 0 || count > (data.Length - startIndex))
 				throw new ArgumentOutOfRangeException (nameof (count));
 
-			HtmlEncode (output, new CharArray (data), startIndex, count);
+			HtmlEncode (output, data.AsSpan (startIndex, count));
 		}
 
 		/// <summary>
@@ -477,7 +547,7 @@ namespace MimeKit.Text {
 		/// <remarks>
 		/// Encodes HTML character data.
 		/// </remarks>
-		/// <returns>THe encoded character data.</returns>
+		/// <returns>The encoded character data.</returns>
 		/// <param name="data">The character data to encode.</param>
 		/// <param name="startIndex">The starting index of the character data.</param>
 		/// <param name="count">The number of characters in the data.</param>
@@ -490,7 +560,7 @@ namespace MimeKit.Text {
 		/// </exception>
 		public static string HtmlEncode (char[] data, int startIndex, int count)
 		{
-			if (data == null)
+			if (data is null)
 				throw new ArgumentNullException (nameof (data));
 
 			if (startIndex < 0 || startIndex >= data.Length)
@@ -499,12 +569,7 @@ namespace MimeKit.Text {
 			if (count < 0 || count > (data.Length - startIndex))
 				throw new ArgumentOutOfRangeException (nameof (count));
 
-			var encoded = new StringBuilder ();
-
-			using (var output = new StringWriter (encoded))
-				HtmlEncode (output, new CharArray (data), startIndex, count);
-
-			return encoded.ToString ();
+			return HtmlEncode (data.AsSpan (startIndex, count));
 		}
 
 		/// <summary>
@@ -528,10 +593,10 @@ namespace MimeKit.Text {
 		/// </exception>
 		public static void HtmlEncode (TextWriter output, string data, int startIndex, int count)
 		{
-			if (output == null)
+			if (output is null)
 				throw new ArgumentNullException (nameof (output));
 
-			if (data == null)
+			if (data is null)
 				throw new ArgumentNullException (nameof (data));
 
 			if (startIndex < 0 || startIndex >= data.Length)
@@ -540,7 +605,38 @@ namespace MimeKit.Text {
 			if (count < 0 || count > (data.Length - startIndex))
 				throw new ArgumentOutOfRangeException (nameof (count));
 
-			HtmlEncode (output, new CharString (data), startIndex, count);
+			HtmlEncode (output, data.AsSpan (startIndex, count));
+		}
+
+		/// <summary>
+		/// Encode HTML character data.
+		/// </summary>
+		/// <remarks>
+		/// Encodes HTML character data.
+		/// </remarks>
+		/// <returns>The encoded character data.</returns>
+		/// <param name="data">The character data to encode.</param>
+		/// <param name="startIndex">The starting index of the character data.</param>
+		/// <param name="count">The number of characters in the data.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="data"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.ArgumentOutOfRangeException">
+		/// <para><paramref name="startIndex"/> and <paramref name="count"/> do not specify
+		/// a valid range in the data.</para>
+		/// </exception>
+		public static string HtmlEncode (string data, int startIndex, int count)
+		{
+			if (data is null)
+				throw new ArgumentNullException (nameof (data));
+
+			if (startIndex < 0 || startIndex >= data.Length)
+				throw new ArgumentOutOfRangeException (nameof (startIndex));
+
+			if (count < 0 || count > (data.Length - startIndex))
+				throw new ArgumentOutOfRangeException (nameof (count));
+
+			return HtmlEncode (data.AsSpan (startIndex, count));
 		}
 
 		/// <summary>
@@ -558,13 +654,13 @@ namespace MimeKit.Text {
 		/// </exception>
 		public static void HtmlEncode (TextWriter output, string data)
 		{
-			if (output == null)
+			if (output is null)
 				throw new ArgumentNullException (nameof (output));
 
-			if (data == null)
+			if (data is null)
 				throw new ArgumentNullException (nameof (data));
 
-			HtmlEncode (output, new CharString (data), 0, data.Length);
+			HtmlEncode (output, data.AsSpan ());
 		}
 
 		/// <summary>
@@ -573,54 +669,17 @@ namespace MimeKit.Text {
 		/// <remarks>
 		/// Encodes HTML character data.
 		/// </remarks>
-		/// <returns>THe encoded character data.</returns>
-		/// <param name="data">The character data to encode.</param>
-		/// <param name="startIndex">The starting index of the character data.</param>
-		/// <param name="count">The number of characters in the data.</param>
-		/// <exception cref="System.ArgumentNullException">
-		/// <paramref name="data"/> is <c>null</c>.
-		/// </exception>
-		/// <exception cref="System.ArgumentOutOfRangeException">
-		/// <para><paramref name="startIndex"/> and <paramref name="count"/> do not specify
-		/// a valid range in the data.</para>
-		/// </exception>
-		public static string HtmlEncode (string data, int startIndex, int count)
-		{
-			if (data == null)
-				throw new ArgumentNullException (nameof (data));
-
-			if (startIndex < 0 || startIndex >= data.Length)
-				throw new ArgumentOutOfRangeException (nameof (startIndex));
-
-			if (count < 0 || count > (data.Length - startIndex))
-				throw new ArgumentOutOfRangeException (nameof (count));
-
-			using (var output = new StringWriter ()) {
-				HtmlEncode (output, new CharString (data), startIndex, count);
-				return output.ToString ();
-			}
-		}
-
-		/// <summary>
-		/// Encode HTML character data.
-		/// </summary>
-		/// <remarks>
-		/// Encodes HTML character data.
-		/// </remarks>
-		/// <returns>THe encoded character data.</returns>
+		/// <returns>The encoded character data.</returns>
 		/// <param name="data">The character data to encode.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="data"/> is <c>null</c>.
 		/// </exception>
 		public static string HtmlEncode (string data)
 		{
-			if (data == null)
+			if (data is null)
 				throw new ArgumentNullException (nameof (data));
 
-			using (var output = new StringWriter ()) {
-				HtmlEncode (output, new CharString (data), 0, data.Length);
-				return output.ToString ();
-			}
+			return HtmlEncode (data.AsSpan ());
 		}
 
 		/// <summary>
@@ -644,10 +703,10 @@ namespace MimeKit.Text {
 		/// </exception>
 		public static void HtmlDecode (TextWriter output, string data, int startIndex, int count)
 		{
-			if (output == null)
+			if (output is null)
 				throw new ArgumentNullException (nameof (output));
 
-			if (data == null)
+			if (data is null)
 				throw new ArgumentNullException (nameof (data));
 
 			if (startIndex < 0 || startIndex >= data.Length)
@@ -688,10 +747,10 @@ namespace MimeKit.Text {
 		/// </exception>
 		public static void HtmlDecode (TextWriter output, string data)
 		{
-			if (output == null)
+			if (output is null)
 				throw new ArgumentNullException (nameof (output));
 
-			if (data == null)
+			if (data is null)
 				throw new ArgumentNullException (nameof (data));
 
 			HtmlDecode (output, data, 0, data.Length);
@@ -716,7 +775,7 @@ namespace MimeKit.Text {
 		/// </exception>
 		public static string HtmlDecode (string data, int startIndex, int count)
 		{
-			if (data == null)
+			if (data is null)
 				throw new ArgumentNullException (nameof (data));
 
 			if (startIndex < 0 || startIndex >= data.Length)
@@ -744,7 +803,7 @@ namespace MimeKit.Text {
 		/// </exception>
 		public static string HtmlDecode (string data)
 		{
-			if (data == null)
+			if (data is null)
 				throw new ArgumentNullException (nameof (data));
 
 			using (var output = new StringWriter ()) {

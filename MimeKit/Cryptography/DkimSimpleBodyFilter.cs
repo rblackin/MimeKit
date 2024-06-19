@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,6 +23,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 //
+
+using System;
 
 namespace MimeKit.Cryptography {
 	/// <summary>
@@ -46,22 +48,20 @@ namespace MimeKit.Cryptography {
 			EmptyLines = 0;
 		}
 
-		unsafe int Filter (byte* inbuf, int length, byte* outbuf)
+		int Filter (ReadOnlySpan<byte> input, Span<byte> output)
 		{
-			byte* inend = inbuf + length;
-			byte* outptr = outbuf;
-			byte* inptr = inbuf;
 			int count = 0;
+			int outputIndex = 0;
 
-			while (inptr < inend) {
-				if (*inptr == (byte) '\r') {
+			foreach (var c in input) {
+				if (c == (byte) '\r') {
 					if (!IsEmptyLine) {
-						*outptr++ = *inptr;
+						output[outputIndex++] = c;
 						count++;
 					}
-				} else if (*inptr == (byte) '\n') {
+				} else if (c == (byte) '\n') {
 					if (!IsEmptyLine) {
-						*outptr++ = *inptr;
+						output[outputIndex++] = c;
 						LastWasNewLine = true;
 						IsEmptyLine = true;
 						EmptyLines = 0;
@@ -73,8 +73,8 @@ namespace MimeKit.Cryptography {
 					if (EmptyLines > 0) {
 						// unwind our collection of empty lines
 						while (EmptyLines > 0) {
-							*outptr++ = (byte) '\r';
-							*outptr++ = (byte) '\n';
+							output[outputIndex++] = (byte) '\r';
+							output[outputIndex++] = (byte) '\n';
 							EmptyLines--;
 							count += 2;
 						}
@@ -83,11 +83,9 @@ namespace MimeKit.Cryptography {
 					LastWasNewLine = false;
 					IsEmptyLine = false;
 
-					*outptr++ = *inptr;
+					output[outputIndex++] = c;
 					count++;
 				}
-
-				inptr++;
 			}
 
 			return count;
@@ -111,11 +109,7 @@ namespace MimeKit.Cryptography {
 		{
 			EnsureOutputSize (length + EmptyLines * 2 + 1, false);
 
-			unsafe {
-				fixed (byte* inptr = input, outptr = OutputBuffer) {
-					outputLength = Filter (inptr + startIndex, length, outptr);
-				}
-			}
+			outputLength = Filter (input.AsSpan (startIndex, length), OutputBuffer.AsSpan ());
 
 			outputIndex = 0;
 

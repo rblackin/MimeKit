@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -188,7 +188,7 @@ namespace MimeKit {
 		/// </exception>
 		public bool Contains (string field)
 		{
-			if (field == null)
+			if (field is null)
 				throw new ArgumentNullException (nameof (field));
 
 			return table.ContainsKey (field);
@@ -231,7 +231,7 @@ namespace MimeKit {
 		/// </exception>
 		public int IndexOf (string field)
 		{
-			if (field == null)
+			if (field is null)
 				throw new ArgumentNullException (nameof (field));
 
 			for (int i = 0; i < headers.Count; i++) {
@@ -379,7 +379,7 @@ namespace MimeKit {
 		/// </exception>
 		public int LastIndexOf (string field)
 		{
-			if (field == null)
+			if (field is null)
 				throw new ArgumentNullException (nameof (field));
 
 			for (int i = headers.Count - 1; i >= 0; i--) {
@@ -391,12 +391,12 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Remove the first occurance of the specified header field.
+		/// Remove the first occurrence of the specified header field.
 		/// </summary>
 		/// <remarks>
-		/// Removes the first occurance of the specified header field, if any exist.
+		/// Removes the first occurrence of the specified header field, if any exist.
 		/// </remarks>
-		/// <returns><value>true</value> if the first occurance of the specified
+		/// <returns><value>true</value> if the first occurrence of the specified
 		/// header was removed; otherwise <value>false</value>.</returns>
 		/// <param name="id">The header identifier.</param>
 		/// <exception cref="System.ArgumentOutOfRangeException">
@@ -407,20 +407,19 @@ namespace MimeKit {
 			if (id == HeaderId.Unknown)
 				throw new ArgumentOutOfRangeException (nameof (id));
 
-			Header header;
-			if (!table.TryGetValue (id.ToHeaderName (), out header))
+			if (!table.TryGetValue (id.ToHeaderName (), out var header))
 				return false;
 
 			return Remove (header);
 		}
 
 		/// <summary>
-		/// Remove the first occurance of the specified header field.
+		/// Remove the first occurrence of the specified header field.
 		/// </summary>
 		/// <remarks>
-		/// Removes the first occurance of the specified header field, if any exist.
+		/// Removes the first occurrence of the specified header field, if any exist.
 		/// </remarks>
-		/// <returns><value>true</value> if the first occurance of the specified
+		/// <returns><value>true</value> if the first occurrence of the specified
 		/// header was removed; otherwise <value>false</value>.</returns>
 		/// <param name="field">The name of the header field.</param>
 		/// <exception cref="System.ArgumentNullException">
@@ -428,11 +427,10 @@ namespace MimeKit {
 		/// </exception>
 		public bool Remove (string field)
 		{
-			if (field == null)
+			if (field is null)
 				throw new ArgumentNullException (nameof (field));
 
-			Header header;
-			if (!table.TryGetValue (field, out header))
+			if (!table.TryGetValue (field, out var header))
 				return false;
 
 			return Remove (header);
@@ -453,7 +451,8 @@ namespace MimeKit {
 			if (id == HeaderId.Unknown)
 				throw new ArgumentOutOfRangeException (nameof (id));
 
-			table.Remove (id.ToHeaderName ());
+			if (!table.Remove (id.ToHeaderName ()))
+				return;
 
 			for (int i = headers.Count - 1; i >= 0; i--) {
 				if (headers[i].Id != id)
@@ -478,10 +477,11 @@ namespace MimeKit {
 		/// </exception>
 		public void RemoveAll (string field)
 		{
-			if (field == null)
+			if (field is null)
 				throw new ArgumentNullException (nameof (field));
 
-			table.Remove (field);
+			if (!table.Remove (field))
+				return;
 
 			for (int i = headers.Count - 1; i >= 0; i--) {
 				if (!headers[i].Field.Equals (field, StringComparison.OrdinalIgnoreCase))
@@ -582,14 +582,14 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Get or set the value of the first occurance of a header
+		/// Get or set the value of the first occurrence of a header
 		/// with the specified field name.
 		/// </summary>
 		/// <remarks>
-		/// Gets or sets the value of the first occurance of a header
+		/// Gets or sets the value of the first occurrence of a header
 		/// with the specified field name.
 		/// </remarks>
-		/// <value>The value of the first occurrance of the specified header if it exists; otherwise <c>null</c>.</value>
+		/// <value>The value of the first occurrence of the specified header if it exists; otherwise <c>null</c>.</value>
 		/// <param name="id">The header identifier.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="value"/> is <c>null</c>.
@@ -599,8 +599,7 @@ namespace MimeKit {
 				if (id == HeaderId.Unknown)
 					throw new ArgumentOutOfRangeException (nameof (id));
 
-				Header header;
-				if (table.TryGetValue (id.ToHeaderName (), out header))
+				if (table.TryGetValue (id.ToHeaderName (), out var header))
 					return header.Value;
 
 				return null;
@@ -609,11 +608,10 @@ namespace MimeKit {
 				if (id == HeaderId.Unknown)
 					throw new ArgumentOutOfRangeException (nameof (id));
 
-				if (value == null)
+				if (value is null)
 					throw new ArgumentNullException (nameof (value));
 
-				Header header;
-				if (table.TryGetValue (id.ToHeaderName (), out header)) {
+				if (table.TryGetValue (id.ToHeaderName (), out var header)) {
 					header.Value = value;
 				} else {
 					Add (id, value);
@@ -622,14 +620,14 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Get or set the value of the first occurance of a header
+		/// Get or set the value of the first occurrence of a header
 		/// with the specified field name.
 		/// </summary>
 		/// <remarks>
-		/// Gets or sets the value of the first occurance of a header
+		/// Gets or sets the value of the first occurrence of a header
 		/// with the specified field name.
 		/// </remarks>
-		/// <value>The value of the first occurrance of the specified header if it exists; otherwise <c>null</c>.</value>
+		/// <value>The value of the first occurrence of the specified header if it exists; otherwise <c>null</c>.</value>
 		/// <param name="field">The name of the header field.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <para><paramref name="field"/> is <c>null</c>.</para>
@@ -638,24 +636,22 @@ namespace MimeKit {
 		/// </exception>
 		public string this [string field] {
 			get {
-				if (field == null)
+				if (field is null)
 					throw new ArgumentNullException (nameof (field));
 
-				Header header;
-				if (table.TryGetValue (field, out header))
+				if (table.TryGetValue (field, out var header))
 					return header.Value;
 
 				return null;
 			}
 			set {
-				if (field == null)
+				if (field is null)
 					throw new ArgumentNullException (nameof (field));
 
-				if (value == null)
+				if (value is null)
 					throw new ArgumentNullException (nameof (value));
 
-				Header header;
-				if (table.TryGetValue (field, out header)) {
+				if (table.TryGetValue (field, out var header)) {
 					header.Value = value;
 				} else {
 					Add (field, value);
@@ -683,12 +679,12 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public void WriteTo (FormatOptions options, Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public void WriteTo (FormatOptions options, Stream stream, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (stream == null)
+			if (stream is null)
 				throw new ArgumentNullException (nameof (stream));
 
 			using (var filtered = new FilteredStream (stream)) {
@@ -708,9 +704,7 @@ namespace MimeKit {
 				filtered.Flush (cancellationToken);
 			}
 
-			var cancellable = stream as ICancellableStream;
-
-			if (cancellable != null) {
+			if (stream is ICancellableStream cancellable) {
 				cancellable.Write (options.NewLineBytes, 0, options.NewLineBytes.Length, cancellationToken);
 			} else {
 				cancellationToken.ThrowIfCancellationRequested ();
@@ -739,12 +733,12 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public async Task WriteToAsync (FormatOptions options, Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public async Task WriteToAsync (FormatOptions options, Stream stream, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (stream == null)
+			if (stream is null)
 				throw new ArgumentNullException (nameof (stream));
 
 			using (var filtered = new FilteredStream (stream)) {
@@ -784,7 +778,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public void WriteTo (Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public void WriteTo (Stream stream, CancellationToken cancellationToken = default)
 		{
 			WriteTo (FormatOptions.Default, stream, cancellationToken);
 		}
@@ -807,7 +801,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public Task WriteToAsync (Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public Task WriteToAsync (Stream stream, CancellationToken cancellationToken = default)
 		{
 			return WriteToAsync (FormatOptions.Default, stream, cancellationToken);
 		}
@@ -848,7 +842,7 @@ namespace MimeKit {
 		/// </exception>
 		public void Add (Header header)
 		{
-			if (header == null)
+			if (header is null)
 				throw new ArgumentNullException (nameof (header));
 
 			if (!table.ContainsKey (header.Field))
@@ -891,7 +885,7 @@ namespace MimeKit {
 		/// </exception>
 		public bool Contains (Header header)
 		{
-			if (header == null)
+			if (header is null)
 				throw new ArgumentNullException (nameof (header));
 
 			return headers.Contains (header);
@@ -931,7 +925,7 @@ namespace MimeKit {
 		/// </exception>
 		public bool Remove (Header header)
 		{
-			if (header == null)
+			if (header is null)
 				throw new ArgumentNullException (nameof (header));
 
 			int index = headers.IndexOf (header);
@@ -975,11 +969,10 @@ namespace MimeKit {
 		{
 			int i;
 
-			if (header == null)
+			if (header is null)
 				throw new ArgumentNullException (nameof (header));
 
-			Header first;
-			if (!table.TryGetValue (header.Field, out first)) {
+			if (!table.TryGetValue (header.Field, out var first)) {
 				Add (header);
 				return;
 			}
@@ -1022,7 +1015,7 @@ namespace MimeKit {
 		/// </exception>
 		public int IndexOf (Header header)
 		{
-			if (header == null)
+			if (header is null)
 				throw new ArgumentNullException (nameof (header));
 
 			return headers.IndexOf (header);
@@ -1047,12 +1040,11 @@ namespace MimeKit {
 			if (index < 0 || index > Count)
 				throw new ArgumentOutOfRangeException (nameof (index));
 
-			if (header == null)
+			if (header is null)
 				throw new ArgumentNullException (nameof (header));
 
 			// update the lookup table
-			Header hdr;
-			if (table.TryGetValue (header.Field, out hdr)) {
+			if (table.TryGetValue (header.Field, out var hdr)) {
 				int idx = headers.IndexOf (hdr);
 
 				if (idx >= index)
@@ -1128,7 +1120,7 @@ namespace MimeKit {
 				if (index < 0 || index >= Count)
 					throw new ArgumentOutOfRangeException (nameof (index));
 
-				if (value == null)
+				if (value is null)
 					throw new ArgumentNullException (nameof (value));
 
 				var header = headers[index];
@@ -1222,13 +1214,17 @@ namespace MimeKit {
 
 		void OnChanged (Header header, HeaderListChangedAction action)
 		{
-			if (Changed != null)
-				Changed (this, new HeaderListChangedEventArgs (header, action));
+			Changed?.Invoke (this, new HeaderListChangedEventArgs (header, action));
+		}
+
+		internal bool TryGetHeader (HeaderId id, out Header header)
+		{
+			return table.TryGetValue (id.ToHeaderName (), out header);
 		}
 
 		internal bool TryGetHeader (string field, out Header header)
 		{
-			if (field == null)
+			if (field is null)
 				throw new ArgumentNullException (nameof (field));
 
 			return table.TryGetValue (field, out header);
@@ -1259,12 +1255,12 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static HeaderList Load (ParserOptions options, Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public static HeaderList Load (ParserOptions options, Stream stream, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (stream == null)
+			if (stream is null)
 				throw new ArgumentNullException (nameof (stream));
 
 			var parser = new MimeParser (options, stream, MimeFormat.Entity);
@@ -1297,12 +1293,12 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static Task<HeaderList> LoadAsync (ParserOptions options, Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public static Task<HeaderList> LoadAsync (ParserOptions options, Stream stream, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (stream == null)
+			if (stream is null)
 				throw new ArgumentNullException (nameof (stream));
 
 			var parser = new MimeParser (options, stream, MimeFormat.Entity);
@@ -1332,7 +1328,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static HeaderList Load (Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public static HeaderList Load (Stream stream, CancellationToken cancellationToken = default)
 		{
 			return Load (ParserOptions.Default, stream, cancellationToken);
 		}
@@ -1359,7 +1355,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static Task<HeaderList> LoadAsync (Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public static Task<HeaderList> LoadAsync (Stream stream, CancellationToken cancellationToken = default)
 		{
 			return LoadAsync (ParserOptions.Default, stream, cancellationToken);
 		}
@@ -1402,12 +1398,12 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static HeaderList Load (ParserOptions options, string fileName, CancellationToken cancellationToken = default (CancellationToken))
+		public static HeaderList Load (ParserOptions options, string fileName, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (fileName == null)
+			if (fileName is null)
 				throw new ArgumentNullException (nameof (fileName));
 
 			using (var stream = File.OpenRead (fileName))
@@ -1452,12 +1448,12 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static async Task<HeaderList> LoadAsync (ParserOptions options, string fileName, CancellationToken cancellationToken = default (CancellationToken))
+		public static async Task<HeaderList> LoadAsync (ParserOptions options, string fileName, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (fileName == null)
+			if (fileName is null)
 				throw new ArgumentNullException (nameof (fileName));
 
 			using (var stream = File.OpenRead (fileName))
@@ -1499,7 +1495,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static HeaderList Load (string fileName, CancellationToken cancellationToken = default (CancellationToken))
+		public static HeaderList Load (string fileName, CancellationToken cancellationToken = default)
 		{
 			return Load (ParserOptions.Default, fileName, cancellationToken);
 		}
@@ -1539,7 +1535,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static Task<HeaderList> LoadAsync (string fileName, CancellationToken cancellationToken = default (CancellationToken))
+		public static Task<HeaderList> LoadAsync (string fileName, CancellationToken cancellationToken = default)
 		{
 			return LoadAsync (ParserOptions.Default, fileName, cancellationToken);
 		}

@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -25,9 +25,11 @@
 //
 
 using System;
-using System.Text;
 using System.Collections;
+using System.Globalization;
 using System.Collections.Generic;
+
+using MimeKit.Utils;
 
 namespace MimeKit {
 	/// <summary>
@@ -74,7 +76,7 @@ namespace MimeKit {
 		/// </exception>
 		public MimeIterator (MimeMessage message)
 		{
-			if (message == null)
+			if (message is null)
 				throw new ArgumentNullException (nameof (message));
 
 			Message = message;
@@ -94,7 +96,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets the top-level message.
+		/// Get the top-level message.
 		/// </summary>
 		/// <remarks>
 		/// Gets the top-level message.
@@ -105,7 +107,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets the parent of the current entity.
+		/// Get the parent of the current entity.
 		/// </summary>
 		/// <remarks>
 		/// <para>After an iterator is created or after the <see cref="Reset()"/> method is called,
@@ -128,7 +130,7 @@ namespace MimeKit {
 		/// </exception>
 		public MimeEntity Parent {
 			get {
-				if (current == null)
+				if (current is null)
 					throw new InvalidOperationException ();
 
 				return stack.Count > 0 ? stack.Peek ().Entity : null;
@@ -136,7 +138,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets the current entity.
+		/// Get the current entity.
 		/// </summary>
 		/// <remarks>
 		/// After an iterator is created or after the <see cref="Reset()"/> method is called,
@@ -156,7 +158,7 @@ namespace MimeKit {
 		/// </exception>
 		public MimeEntity Current {
 			get {
-				if (current == null)
+				if (current is null)
 					throw new InvalidOperationException ();
 
 				return current;
@@ -164,7 +166,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets the current entity.
+		/// Get the current entity.
 		/// </summary>
 		/// <remarks>
 		/// After an iterator is created or after the <see cref="Reset()"/> method is called,
@@ -184,7 +186,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets the path specifier for the current entity.
+		/// Get the path specifier for the current entity.
 		/// </summary>
 		/// <remarks>
 		/// After an iterator is created or after the <see cref="Reset()"/> method is called,
@@ -202,22 +204,24 @@ namespace MimeKit {
 		/// </exception>
 		public string PathSpecifier {
 			get {
-				if (current == null)
+				if (current is null)
 					throw new InvalidOperationException ();
 
-				var specifier = new StringBuilder ();
+				var specifier = new ValueStringBuilder(128);
 
-				for (int i = 0; i < path.Count; i++)
-					specifier.AppendFormat ("{0}.", path[i] + 1);
+				for (int i = 0; i < path.Count; i++) {
+					specifier.AppendInvariant (path[i] + 1);
+					specifier.Append ('.');
+				}
 
-				specifier.AppendFormat ("{0}", index + 1);
+				specifier.AppendInvariant (index + 1);
 
 				return specifier.ToString ();
 			}
 		}
 
 		/// <summary>
-		/// Gets the depth of the current entity.
+		/// Get the depth of the current entity.
 		/// </summary>
 		/// <remarks>
 		/// After an iterator is created or after the <see cref="Reset()"/> method is called,
@@ -234,7 +238,7 @@ namespace MimeKit {
 		/// </exception>
 		public int Depth {
 			get {
-				if (current == null)
+				if (current is null)
 					throw new InvalidOperationException ();
 
 				return stack.Count;
@@ -267,7 +271,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Advances the iterator to the next depth-first entity of the tree structure.
+		/// Advance the iterator to the next depth-first entity of the tree structure.
 		/// </summary>
 		/// <remarks>
 		/// After an iterator is created or after the <see cref="Reset()"/> method is called,
@@ -290,14 +294,13 @@ namespace MimeKit {
 				return current != null;
 			}
 
-			var message_part = current as MessagePart;
 			var multipart = current as Multipart;
 
-			if (message_part != null) {
-				current = message_part.Message != null ? message_part.Message.Body : null;
+			if (current is MessagePart rfc822) {
+				current = rfc822.Message?.Body;
 
 				if (current != null) {
-					Push (message_part);
+					Push (rfc822);
 					index = current is Multipart ? -1 : 0;
 					return true;
 				}
@@ -338,10 +341,9 @@ namespace MimeKit {
 		{
 			var path = pathSpecifier.Split ('.');
 			var indexes = new int[path.Length];
-			int index;
 
 			for (int i = 0; i < path.Length; i++) {
-				if (!int.TryParse (path[i], out index) || index < 0)
+				if (!int.TryParse (path[i], NumberStyles.None, CultureInfo.InvariantCulture, out int index) || index < 0)
 					throw new FormatException ("Invalid path specifier format.");
 
 				indexes[i] = index - 1;
@@ -351,7 +353,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Advances to the entity specified by the path specifier.
+		/// Advance to the entity specified by the path specifier.
 		/// </summary>
 		/// <remarks>
 		/// <para>Advances the iterator to the entity specified by the path specifier which
@@ -372,7 +374,7 @@ namespace MimeKit {
 		/// </exception>
 		public bool MoveTo (string pathSpecifier)
 		{
-			if (pathSpecifier == null)
+			if (pathSpecifier is null)
 				throw new ArgumentNullException (nameof (pathSpecifier));
 
 			if (pathSpecifier.Length == 0)
@@ -411,7 +413,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Resets the iterator to its initial state.
+		/// Reset the iterator to its initial state.
 		/// </summary>
 		/// <remarks>
 		/// Resets the iterator to its initial state.
@@ -426,7 +428,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Releases the unmanaged resources used by the <see cref="MimeIterator"/> and
+		/// Release the unmanaged resources used by the <see cref="MimeIterator"/> and
 		/// optionally releases the managed resources.
 		/// </summary>
 		/// <remarks>
@@ -440,7 +442,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Releases all resources used by the <see cref="MimeIterator"/> object.
+		/// Release all resources used by the <see cref="MimeIterator"/> object.
 		/// </summary>
 		/// <remarks>Call <see cref="Dispose()"/> when you are finished using the <see cref="MimeIterator"/>. The
 		/// <see cref="Dispose()"/> method leaves the <see cref="MimeIterator"/> in an unusable state. After

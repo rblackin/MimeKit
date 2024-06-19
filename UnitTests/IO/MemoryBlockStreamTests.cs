@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,22 +24,16 @@
 // THE SOFTWARE.
 //
 
-using System;
-using System.IO;
-using System.Threading.Tasks;
-
-using NUnit.Framework;
-
 using MimeKit.IO;
 
 namespace UnitTests.IO {
 	[TestFixture]
 	public class MemoryBlockStreamTests : IDisposable
 	{
-		MemoryBlockStream blocks;
-		MemoryStream master;
-		byte[] buf, mbuf;
-		Random random;
+		readonly MemoryBlockStream blocks;
+		readonly MemoryStream master;
+		readonly byte[] buf, mbuf;
+		readonly Random random;
 
 		public MemoryBlockStreamTests ()
 		{
@@ -71,6 +65,8 @@ namespace UnitTests.IO {
 		{
 			blocks.Dispose ();
 			master.Dispose ();
+
+			GC.SuppressFinalize (this);
 		}
 
 		[Test]
@@ -79,10 +75,10 @@ namespace UnitTests.IO {
 			var buffer = new byte[1024];
 
 			using (var block = new MemoryBlockStream ()) {
-				Assert.IsTrue (block.CanRead);
-				Assert.IsTrue (block.CanWrite);
-				Assert.IsTrue (block.CanSeek);
-				Assert.IsFalse (block.CanTimeout);
+				Assert.That (block.CanRead, Is.True);
+				Assert.That (block.CanWrite, Is.True);
+				Assert.That (block.CanSeek, Is.True);
+				Assert.That (block.CanTimeout, Is.False);
 			}
 		}
 
@@ -108,12 +104,39 @@ namespace UnitTests.IO {
 				int nread = blocks.Read (buf, 0, buf.Length);
 				int mread = master.Read (mbuf, 0, mbuf.Length);
 
-				Assert.AreEqual (mread, nread, "Did not read the expected number of bytes from the memory block stream");
-				Assert.AreEqual (master.Position, blocks.Position, "The memory block stream's position did not match");
+				Assert.That (nread, Is.EqualTo (mread), "Did not read the expected number of bytes from the memory block stream");
+				Assert.That (blocks.Position, Is.EqualTo (master.Position), "The memory block stream's position did not match");
 
 				for (int i = 0; i < mread; i++)
-					Assert.AreEqual (mbuf[i], buf[i], "The bytes read do not match");
+					Assert.That (buf[i], Is.EqualTo (mbuf[i]), "The bytes read do not match");
 			} while (master.Position < master.Length);
+		}
+
+		[Test]
+		public void TestReadLargeStream ()
+		{
+			const int n = 4096;
+			var bytes = new byte[n];
+			random.NextBytes (bytes);
+			
+			var stream = new MemoryBlockStream ();
+			while (stream.Position < (long) int.MaxValue + 1) {
+				stream.Write (bytes, 0, bytes.Length);
+			}
+
+			var buffer = new byte[n + 1];
+
+			// read and assert the first n + 1 bytes
+			stream.Position = 0;
+			int nread = stream.Read (buffer, 0, buffer.Length);
+			Assert.That (nread, Is.Not.EqualTo (0));
+			Assert.That (buffer, Is.EqualTo (bytes.Concat (Enumerable.Repeat (bytes[0], 1))).AsCollection);
+
+			// read and assert the last n + 1 bytes
+			stream.Position = stream.Length - buffer.Length;
+			nread = stream.Read (buffer, 0, buffer.Length);
+			Assert.That (nread, Is.Not.EqualTo (0));
+			Assert.That (buffer, Is.EqualTo (Enumerable.Repeat (bytes.Last(), 1).Concat (bytes)).AsCollection);
 		}
 
 		[Test]
@@ -126,11 +149,11 @@ namespace UnitTests.IO {
 				int nread = await blocks.ReadAsync (buf, 0, buf.Length);
 				int mread = await master.ReadAsync (mbuf, 0, mbuf.Length);
 
-				Assert.AreEqual (mread, nread, "Did not read the expected number of bytes from the memory block stream");
-				Assert.AreEqual (master.Position, blocks.Position, "The memory block stream's position did not match");
+				Assert.That (nread, Is.EqualTo (mread), "Did not read the expected number of bytes from the memory block stream");
+				Assert.That (blocks.Position, Is.EqualTo (master.Position), "The memory block stream's position did not match");
 
 				for (int i = 0; i < mread; i++)
-					Assert.AreEqual (mbuf[i], buf[i], "The bytes read do not match");
+					Assert.That (buf[i], Is.EqualTo (mbuf[i]), "The bytes read do not match");
 			} while (master.Position < master.Length);
 		}
 
@@ -184,11 +207,11 @@ namespace UnitTests.IO {
 			int mread = master.Read (mbuf, 0, n);
 			int nread = blocks.Read (buf, 0, n);
 
-			Assert.AreEqual (mread, nread, "Did not read the expected number of bytes from the memory block stream");
-			Assert.AreEqual (master.Position, blocks.Position, "The memory block stream's position did not match");
+			Assert.That (nread, Is.EqualTo (mread), "Did not read the expected number of bytes from the memory block stream");
+			Assert.That (blocks.Position, Is.EqualTo (master.Position), "The memory block stream's position did not match");
 
 			for (int i = 0; i < n; i++)
-				Assert.AreEqual (mbuf[i], buf[i], "The bytes read do not match");
+				Assert.That (buf[i], Is.EqualTo (mbuf[i]), "The bytes read do not match");
 		}
 
 		[Test]
@@ -200,7 +223,7 @@ namespace UnitTests.IO {
 				long expected = master.Seek (offset, SeekOrigin.Begin);
 				long actual = blocks.Seek (offset, SeekOrigin.Begin);
 
-				Assert.AreEqual (expected, actual, "SeekOrigin.Begin");
+				Assert.That (actual, Is.EqualTo (expected), "SeekOrigin.Begin");
 
 				AssertSeekResults ();
 				master.Seek (actual, SeekOrigin.Begin);
@@ -212,7 +235,7 @@ namespace UnitTests.IO {
 				expected = master.Seek (offset, SeekOrigin.Current);
 				actual = blocks.Seek (offset, SeekOrigin.Current);
 
-				Assert.AreEqual (expected, actual, "SeekOrigin.Current (-)");
+				Assert.That (actual, Is.EqualTo (expected), "SeekOrigin.Current (-)");
 
 				AssertSeekResults ();
 				master.Seek (actual, SeekOrigin.Begin);
@@ -224,7 +247,7 @@ namespace UnitTests.IO {
 				expected = master.Seek (offset, SeekOrigin.Current);
 				actual = blocks.Seek (offset, SeekOrigin.Current);
 
-				Assert.AreEqual (expected, actual, "SeekOrigin.Current (+)");
+				Assert.That (actual, Is.EqualTo (expected), "SeekOrigin.Current (+)");
 
 				AssertSeekResults ();
 
@@ -234,7 +257,7 @@ namespace UnitTests.IO {
 				expected = master.Seek (offset, SeekOrigin.End);
 				actual = blocks.Seek (offset, SeekOrigin.End);
 
-				Assert.AreEqual (expected, actual, "SeekOrigin.End");
+				Assert.That (actual, Is.EqualTo (expected), "SeekOrigin.End");
 
 				AssertSeekResults ();
 			}
@@ -251,11 +274,11 @@ namespace UnitTests.IO {
 
 			blocks.SetLength (length + 10240);
 
-			Assert.AreEqual (length + 10240, blocks.Length);
+			Assert.That (blocks.Length, Is.EqualTo (length + 10240));
 
 			blocks.SetLength (length);
 
-			Assert.AreEqual (length, blocks.Length);
+			Assert.That (blocks.Length, Is.EqualTo (length));
 		}
 
 		[Test]
@@ -264,10 +287,10 @@ namespace UnitTests.IO {
 			var masterArray = master.ToArray ();
 			var array = blocks.ToArray ();
 
-			Assert.AreEqual (masterArray.Length, array.Length, "ToArray() length does not match");
+			Assert.That (array.Length, Is.EqualTo (masterArray.Length), "ToArray() length does not match");
 
 			for (int i = 0; i < array.Length; i++)
-				Assert.AreEqual (masterArray[i], array[i], "The bytes do not match");
+				Assert.That (array[i], Is.EqualTo (masterArray[i]), "The bytes do not match");
 		}
 	}
 }

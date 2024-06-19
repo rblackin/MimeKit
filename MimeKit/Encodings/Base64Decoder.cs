@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -37,7 +37,7 @@ namespace MimeKit.Encodings {
 	/// </remarks>
 	public class Base64Decoder : IMimeDecoder
 	{
-		static readonly byte[] base64_rank = new byte[256] {
+		static ReadOnlySpan<byte> base64_rank => new byte[256] {
 			255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
 			255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
 			255,255,255,255,255,255,255,255,255,255,255, 62,255,255,255, 63,
@@ -56,9 +56,9 @@ namespace MimeKit.Encodings {
 			255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
 		};
 
+		int previous;
 		uint saved;
 		byte bytes;
-		byte npad;
 
 		/// <summary>
 		/// Initialize a new instance of the <see cref="Base64Decoder"/> class.
@@ -79,17 +79,15 @@ namespace MimeKit.Encodings {
 		/// <returns>A new <see cref="Base64Decoder"/> with identical state.</returns>
 		public IMimeDecoder Clone ()
 		{
-			var decoder = new Base64Decoder ();
-
-			decoder.saved = saved;
-			decoder.bytes = bytes;
-			decoder.npad = npad;
-
-			return decoder;
+			return new Base64Decoder {
+				previous = previous,
+				saved = saved,
+				bytes = bytes
+			};
 		}
 
 		/// <summary>
-		/// Gets the encoding.
+		/// Get the encoding.
 		/// </summary>
 		/// <remarks>
 		/// Gets the encoding that the decoder supports.
@@ -100,7 +98,7 @@ namespace MimeKit.Encodings {
 		}
 
 		/// <summary>
-		/// Estimates the length of the output.
+		/// Estimate the length of the output.
 		/// </summary>
 		/// <remarks>
 		/// Estimates the number of bytes needed to decode the specified number of input bytes.
@@ -115,7 +113,7 @@ namespace MimeKit.Encodings {
 
 		void ValidateArguments (byte[] input, int startIndex, int length, byte[] output)
 		{
-			if (input == null)
+			if (input is null)
 				throw new ArgumentNullException (nameof (input));
 
 			if (startIndex < 0 || startIndex > input.Length)
@@ -124,7 +122,7 @@ namespace MimeKit.Encodings {
 			if (length < 0 || length > (input.Length - startIndex))
 				throw new ArgumentOutOfRangeException (nameof (length));
 
-			if (output == null)
+			if (output is null)
 				throw new ArgumentNullException (nameof (output));
 
 			if (output.Length < EstimateOutputLength (length))
@@ -132,7 +130,7 @@ namespace MimeKit.Encodings {
 		}
 
 		/// <summary>
-		/// Decodes the specified input into the output buffer.
+		/// Decode the specified input into the output buffer.
 		/// </summary>
 		/// <remarks>
 		/// <para>Decodes the specified input into the output buffer.</para>
@@ -149,46 +147,28 @@ namespace MimeKit.Encodings {
 			byte* inend = input + length;
 			byte* outptr = output;
 			byte* inptr = input;
+			byte c;
 
 			// decode every quartet into a triplet
 			while (inptr < inend) {
-				byte c = base64_rank[*inptr++];
-				if (c != 0xFF) {
-					saved = (saved << 6) | c;
+				byte rank = base64_rank[(c = *inptr++)];
+
+				if (rank != 0xFF) {
+					previous = (previous << 8) | c;
+					saved = (saved << 6) | rank;
 					bytes++;
 
 					if (bytes == 4) {
-						*outptr++ = (byte) ((saved >> 16) & 0xFF);
-						*outptr++ = (byte) ((saved >> 8) & 0xFF);
-						*outptr++ = (byte) (saved & 0xFF);
+						if ((previous & 0xFF0000) != ((byte) '=') << 16) {
+							*outptr++ = (byte) ((saved >> 16) & 0xFF);
+							if ((previous & 0xFF00) != ((byte) '=') << 8) {
+								*outptr++ = (byte) ((saved >> 8) & 0xFF);
+								if ((previous & 0xFF) != (byte) '=')
+									*outptr++ = (byte) (saved & 0xFF);
+							}
+						}
 						saved = 0;
 						bytes = 0;
-
-						if (npad > 0) {
-							outptr -= npad;
-							npad = 0;
-						}
-					}
-				}
-			}
-
-			// Note: we can drop 1 output character per trailing '=' (up to 2)
-			for (int eq = 0; inptr > input && eq < 2; ) {
-				inptr--;
-
-				if (base64_rank[*inptr] != 0xFF) {
-					if (*inptr == '=' && outptr > output) {
-						if (bytes == 0) {
-							// we've got a full quartet, so it's safe to drop an output character.
-							outptr--;
-						} else if (npad < 2) {
-							// keep a record of the # of '='s at the end of the input (up to 2)
-							npad++;
-						}
-
-						eq++;
-					} else {
-						break;
 					}
 				}
 			}
@@ -197,7 +177,7 @@ namespace MimeKit.Encodings {
 		}
 
 		/// <summary>
-		/// Decodes the specified input into the output buffer.
+		/// Decode the specified input into the output buffer.
 		/// </summary>
 		/// <remarks>
 		/// <para>Decodes the specified input into the output buffer.</para>
@@ -236,16 +216,16 @@ namespace MimeKit.Encodings {
 		}
 
 		/// <summary>
-		/// Resets the decoder.
+		/// Reset the decoder.
 		/// </summary>
 		/// <remarks>
 		/// Resets the state of the decoder.
 		/// </remarks>
 		public void Reset ()
 		{
+			previous = 0;
 			saved = 0;
 			bytes = 0;
-			npad = 0;
 		}
 	}
 }

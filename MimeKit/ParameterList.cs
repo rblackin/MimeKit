@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -25,7 +25,6 @@
 //
 
 using System;
-using System.IO;
 using System.Text;
 using System.Buffers;
 using System.Collections;
@@ -147,7 +146,7 @@ namespace MimeKit {
 		/// </exception>
 		public bool Contains (string name)
 		{
-			if (name == null)
+			if (name is null)
 				throw new ArgumentNullException (nameof (name));
 
 			return table.ContainsKey (name);
@@ -166,7 +165,7 @@ namespace MimeKit {
 		/// </exception>
 		public int IndexOf (string name)
 		{
-			if (name == null)
+			if (name is null)
 				throw new ArgumentNullException (nameof (name));
 
 			for (int i = 0; i < parameters.Count; i++) {
@@ -219,11 +218,10 @@ namespace MimeKit {
 		/// </exception>
 		public bool Remove (string name)
 		{
-			if (name == null)
+			if (name is null)
 				throw new ArgumentNullException (nameof (name));
 
-			Parameter param;
-			if (!table.TryGetValue (name, out param))
+			if (!table.TryGetValue (name, out var param))
 				return false;
 
 			return Remove (param);
@@ -247,24 +245,22 @@ namespace MimeKit {
 		/// </exception>
 		public string this [string name] {
 			get {
-				if (name == null)
+				if (name is null)
 					throw new ArgumentNullException (nameof (name));
 
-				Parameter param;
-				if (table.TryGetValue (name, out param))
+				if (table.TryGetValue (name, out var param))
 					return param.Value;
 
 				return null;
 			}
 			set {
-				if (name == null)
+				if (name is null)
 					throw new ArgumentNullException (nameof (name));
 
-				if (value == null)
+				if (value is null)
 					throw new ArgumentNullException (nameof (value));
 
-				Parameter param;
-				if (table.TryGetValue (name, out param)) {
+				if (table.TryGetValue (name, out var param)) {
 					param.Value = value;
 				} else {
 					Add (name, value);
@@ -289,7 +285,7 @@ namespace MimeKit {
 		/// </exception>
 		public bool TryGetValue (string name, out Parameter param)
 		{
-			if (name == null)
+			if (name is null)
 				throw new ArgumentNullException (nameof (name));
 
 			return table.TryGetValue (name, out param);
@@ -309,12 +305,10 @@ namespace MimeKit {
 		/// </exception>
 		public bool TryGetValue (string name, out string value)
 		{
-			Parameter param;
-
-			if (name == null)
+			if (name is null)
 				throw new ArgumentNullException (nameof (name));
 
-			if (!table.TryGetValue (name, out param)) {
+			if (!table.TryGetValue (name, out var param)) {
 				value = null;
 				return false;
 			}
@@ -364,7 +358,7 @@ namespace MimeKit {
 		/// </exception>
 		public void Add (Parameter param)
 		{
-			if (param == null)
+			if (param is null)
 				throw new ArgumentNullException (nameof (param));
 
 			if (table.ContainsKey (param.Name))
@@ -408,14 +402,14 @@ namespace MimeKit {
 		/// </exception>
 		public bool Contains (Parameter param)
 		{
-			if (param == null)
+			if (param is null)
 				throw new ArgumentNullException (nameof (param));
 
 			return parameters.Contains (param);
 		}
 
 		/// <summary>
-		/// Copy all of the parameters in the list to the specified array.
+		/// Copy all of the parameters in the list to an array.
 		/// </summary>
 		/// <remarks>
 		/// Copies all of the parameters within the <see cref="ParameterList"/> into the array,
@@ -442,7 +436,7 @@ namespace MimeKit {
 		/// </exception>
 		public bool Remove (Parameter param)
 		{
-			if (param == null)
+			if (param is null)
 				throw new ArgumentNullException (nameof (param));
 
 			if (!parameters.Remove (param))
@@ -461,7 +455,7 @@ namespace MimeKit {
 		#region IList implementation
 
 		/// <summary>
-		/// Ges the index of the requested parameter, if it exists.
+		/// Get the index of the requested parameter, if it exists.
 		/// </summary>
 		/// <remarks>
 		/// Finds the index of the specified parameter, if it exists.
@@ -473,7 +467,7 @@ namespace MimeKit {
 		/// </exception>
 		public int IndexOf (Parameter param)
 		{
-			if (param == null)
+			if (param is null)
 				throw new ArgumentNullException (nameof (param));
 
 			return parameters.IndexOf (param);
@@ -502,7 +496,7 @@ namespace MimeKit {
 			if (index < 0 || index > Count)
 				throw new ArgumentOutOfRangeException (nameof (index));
 
-			if (param == null)
+			if (param is null)
 				throw new ArgumentNullException (nameof (param));
 
 			if (table.ContainsKey (param.Name))
@@ -565,7 +559,7 @@ namespace MimeKit {
 				if (index < 0 || index >= Count)
 					throw new ArgumentOutOfRangeException (nameof (index));
 
-				if (value == null)
+				if (value is null)
 					throw new ArgumentNullException (nameof (value));
 
 				var param = parameters[index];
@@ -626,10 +620,18 @@ namespace MimeKit {
 
 		#endregion
 
-		internal void Encode (FormatOptions options, StringBuilder builder, ref int lineLength, Encoding charset)
+		internal void Encode (FormatOptions options, ref ValueStringBuilder builder, ref int lineLength, Encoding charset)
 		{
 			foreach (var param in parameters)
-				param.Encode (options, builder, ref lineLength, charset);
+				param.Encode (options, ref builder, ref lineLength, charset);
+		}
+
+		internal void WriteTo (ref ValueStringBuilder builder)
+		{
+			foreach (var param in parameters) {
+				builder.Append ("; ");
+				param.WriteTo (ref builder);
+			}
 		}
 
 		/// <summary>
@@ -641,14 +643,11 @@ namespace MimeKit {
 		/// <returns>A string representing the <see cref="ParameterList"/>.</returns>
 		public override string ToString ()
 		{
-			var values = new StringBuilder ();
+			var builder = new ValueStringBuilder (128);
 
-			foreach (var param in parameters) {
-				values.Append ("; ");
-				values.Append (param.ToString ());
-			}
+			WriteTo (ref builder);
 
-			return values.ToString ();
+			return builder.ToString ();
 		}
 
 		internal event EventHandler Changed;
@@ -660,8 +659,7 @@ namespace MimeKit {
 
 		void OnChanged ()
 		{
-			if (Changed != null)
-				Changed (this, EventArgs.Empty);
+			Changed?.Invoke (this, EventArgs.Empty);
 		}
 
 		static bool SkipParamName (byte[] text, ref int index, int endIndex)
@@ -744,8 +742,7 @@ namespace MimeKit {
 					return false;
 				}
 
-				int identifier;
-				if (ParseUtils.TryParseInt32 (text, ref index, endIndex, out identifier)) {
+				if (ParseUtils.TryParseInt32 (text, ref index, endIndex, out int identifier)) {
 					if (!ParseUtils.SkipCommentsAndWhiteSpace (text, ref index, endIndex, throwOnError))
 						return false;
 
@@ -818,8 +815,8 @@ namespace MimeKit {
 					// Note: https://github.com/jstedfast/MimeKit/issues/159 adds to this suckage
 					// by having a multi-line unquoted value with spaces... don't you just love
 					// mail software written by people who have never heard of standards?
-					using (var memory = new MemoryStream ()) {
-						memory.Write (text, valueIndex, valueLength);
+					using (var buffer = new ByteArrayBuilder (256)) {
+						buffer.Append (text, valueIndex, valueLength);
 
 						do {
 							while (index < endIndex && (text[index] == (byte) '\r' || text[index] == (byte) '\n'))
@@ -830,10 +827,10 @@ namespace MimeKit {
 							while (index < endIndex && text[index] != (byte) ';' && text[index] != (byte) '\r' && text[index] != (byte) '\n')
 								index++;
 
-							memory.Write (text, valueIndex, index - valueIndex);
+							buffer.Append (text, valueIndex, index - valueIndex);
 						} while (index < endIndex && text[index] != ';');
 
-						value = memory.ToArray ();
+						value = buffer.ToArray ();
 						valueLength = value.Length;
 						valueIndex = 0;
 					}
@@ -893,11 +890,10 @@ namespace MimeKit {
 		{
 			int endIndex = startIndex + count;
 			int index = startIndex;
-			string charset;
 
 			// Note: decoder is only null if this is the first segment
-			if (decoder == null) {
-				if (TryGetCharset (text, ref index, endIndex, out charset)) {
+			if (decoder is null) {
+				if (TryGetCharset (text, ref index, endIndex, out string charset)) {
 					try {
 						encoding = CharsetUtils.GetEncoding (charset, "?");
 						decoder = (Decoder) encoding.GetDecoder ();
@@ -923,11 +919,17 @@ namespace MimeKit {
 				length = hex.Decode (text, index, length, decoded);
 
 				int outLength = decoder.GetCharCount (decoded, 0, length, flush);
-				var output = new char[outLength];
+				var output = ArrayPool<char>.Shared.Rent (outLength);
 
-				outLength = decoder.GetChars (decoded, 0, length, output, 0, flush);
+				try {
+					outLength = decoder.GetChars (decoded, 0, length, output, 0, flush);
 
-				return new string (output, 0, outLength);
+					var result = new string (output, 0, outLength);
+
+					return result;
+				} finally {
+					ArrayPool<char>.Shared.Return (output);
+				}
 			} finally {
 				ArrayPool<byte>.Shared.Return (decoded);
 			}
@@ -954,8 +956,7 @@ namespace MimeKit {
 					continue;
 				}
 
-				NameValuePair pair;
-				if (!TryParseNameValuePair (options, text, ref index, endIndex, throwOnError, out pair))
+				if (!TryParseNameValuePair (options, text, ref index, endIndex, throwOnError, out var pair))
 					return false;
 
 				if (!ParseUtils.SkipCommentsAndWhiteSpace (text, ref index, endIndex, throwOnError))
@@ -1000,7 +1001,6 @@ namespace MimeKit {
 				var buffer = param.Value;
 				Encoding encoding = null;
 				Decoder decoder = null;
-				Parameter parameter;
 				string value;
 
 				if (param.Id.HasValue) {
@@ -1017,7 +1017,6 @@ namespace MimeKit {
 
 						if (parts[i].Encoded) {
 							bool flush = i + 1 >= parts.Count || !parts[i + 1].Encoded;
-							Encoding charset;
 
 							// Note: Some mail clients mistakenly quote encoded parameter values when they shouldn't
 							if (length >= 2 && buffer[startIndex] == (byte) '"' && buffer[startIndex + length - 1] == (byte) '"') {
@@ -1025,10 +1024,10 @@ namespace MimeKit {
 								length -= 2;
 							}
 
-							value += DecodeRfc2231 (out charset, ref decoder, hex, buffer, startIndex, length, flush);
-							encoding = encoding ?? charset;
+							value += DecodeRfc2231 (out Encoding charset, ref decoder, hex, buffer, startIndex, length, flush);
+							encoding ??= charset;
 						} else if (length >= 2 && buffer[startIndex] == (byte) '"') {
-							var quoted = CharsetUtils.ConvertToUnicode (options,buffer, startIndex, length);
+							var quoted = CharsetUtils.ConvertToUnicode (options, buffer, startIndex, length);
 							value += MimeUtils.Unquote (quoted);
 							hex.Reset ();
 						} else if (length > 0) {
@@ -1065,8 +1064,8 @@ namespace MimeKit {
 					int codepage = -1;
 
 					if (length >= 2 && text[startIndex] == (byte) '"') {
-						var quoted = Rfc2047.DecodeText (options, buffer, startIndex, length, out codepage);
-						value = MimeUtils.Unquote (quoted);
+						var unquoted = MimeUtils.Unquote (buffer, startIndex, length);
+						value = Rfc2047.DecodeText (options, unquoted, 0, unquoted.Length, out codepage);
 					} else if (length > 0) {
 						value = Rfc2047.DecodeText (options, buffer, startIndex, length, out codepage);
 					} else {
@@ -1081,7 +1080,7 @@ namespace MimeKit {
 					continue;
 				}
 
-				if (paramList.table.TryGetValue (param.Name, out parameter)) {
+				if (paramList.table.TryGetValue (param.Name, out var parameter)) {
 					parameter.Encoding = encoding;
 					parameter.Value = value;
 				} else if (encoding != null) {

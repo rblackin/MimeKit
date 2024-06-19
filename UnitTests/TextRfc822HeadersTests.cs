@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,15 +24,9 @@
 // THE SOFTWARE.
 //
 
-using System;
-using System.IO;
-
-using NUnit.Framework;
-
 using MimeKit;
 
-namespace UnitTests
-{
+namespace UnitTests {
 	[TestFixture]
 	public class TextRfc822HeadersTests
 	{
@@ -82,8 +76,8 @@ namespace UnitTests
 				var visitor = new TextRfc822HeadersVisitor ();
 				visitor.Visit (message);
 
-				Assert.IsNotNull (visitor.Rfc822Headers, "Rfc822Headers");
-				Assert.AreEqual ("id@localhost", visitor.Rfc822Headers.ContentId, "ContentId");
+				Assert.That (visitor.Rfc822Headers, Is.Not.Null, "Rfc822Headers");
+				Assert.That (visitor.Rfc822Headers.ContentId, Is.EqualTo ("id@localhost"), "ContentId");
 			}
 		}
 	}

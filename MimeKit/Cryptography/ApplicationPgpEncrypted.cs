@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -37,7 +37,7 @@ namespace MimeKit.Cryptography {
 	/// a <see cref="MultipartEncrypted"/> part and contains only a Version
 	/// header.
 	/// </remarks>
-	public class ApplicationPgpEncrypted : MimePart
+	public class ApplicationPgpEncrypted : MimePart, IApplicationPgpEncrypted
 	{
 		/// <summary>
 		/// Initialize a new instance of the <see cref="ApplicationPgpEncrypted"/>
@@ -71,6 +71,11 @@ namespace MimeKit.Cryptography {
 			Content = new MimeContent (content);
 		}
 
+		void CheckDisposed ()
+		{
+			CheckDisposed (nameof (ApplicationPgpEncrypted));
+		}
+
 		/// <summary>
 		/// Dispatches to the specific visit method for this MIME entity.
 		/// </summary>
@@ -86,10 +91,15 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="visitor"/> is <c>null</c>.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="ApplicationPgpEncrypted"/> has been disposed.
+		/// </exception>
 		public override void Accept (MimeVisitor visitor)
 		{
 			if (visitor == null)
 				throw new ArgumentNullException (nameof (visitor));
+
+			CheckDisposed ();
 
 			visitor.VisitApplicationPgpEncrypted (this);
 		}

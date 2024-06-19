@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,13 +24,9 @@
 // THE SOFTWARE.
 //
 
-using System;
-using System.IO;
 using System.Text;
 
 using MimeKit.Text;
-
-using NUnit.Framework;
 
 namespace UnitTests.Text {
 	[TestFixture]
@@ -66,20 +62,20 @@ namespace UnitTests.Text {
 		{
 			var converter = new HtmlToHtml ();
 
-			Assert.IsFalse (converter.DetectEncodingFromByteOrderMark, "DetectEncodingFromByteOrderMark");
-			Assert.IsFalse (converter.FilterComments, "FilterComments");
-			Assert.IsFalse (converter.FilterHtml, "FilterHtml");
-			Assert.IsNull (converter.Footer, "Footer");
-			Assert.AreEqual (HeaderFooterFormat.Text, converter.FooterFormat, "FooterFormat");
-			Assert.IsNull (converter.Header, "Header");
-			Assert.AreEqual (HeaderFooterFormat.Text, converter.HeaderFormat, "HeaderFormat");
-			Assert.IsNull (converter.HtmlTagCallback, "HtmlTagCallback");
-			Assert.AreEqual (Encoding.UTF8, converter.InputEncoding, "InputEncoding");
-			Assert.AreEqual (TextFormat.Html, converter.InputFormat, "InputFormat");
-			Assert.AreEqual (4096, converter.InputStreamBufferSize, "InputStreamBufferSize");
-			Assert.AreEqual (Encoding.UTF8, converter.OutputEncoding, "OutputEncoding");
-			Assert.AreEqual (TextFormat.Html, converter.OutputFormat, "OutputFormat");
-			Assert.AreEqual (4096, converter.OutputStreamBufferSize, "OutputStreamBufferSize");
+			Assert.That (converter.DetectEncodingFromByteOrderMark, Is.False, "DetectEncodingFromByteOrderMark");
+			Assert.That (converter.FilterComments, Is.False, "FilterComments");
+			Assert.That (converter.FilterHtml, Is.False, "FilterHtml");
+			Assert.That (converter.Footer, Is.Null, "Footer");
+			Assert.That (converter.FooterFormat, Is.EqualTo (HeaderFooterFormat.Text), "FooterFormat");
+			Assert.That (converter.Header, Is.Null, "Header");
+			Assert.That (converter.HeaderFormat, Is.EqualTo (HeaderFooterFormat.Text), "HeaderFormat");
+			Assert.That (converter.HtmlTagCallback, Is.Null, "HtmlTagCallback");
+			Assert.That (converter.InputEncoding, Is.EqualTo (Encoding.UTF8), "InputEncoding");
+			Assert.That (converter.InputFormat, Is.EqualTo (TextFormat.Html), "InputFormat");
+			Assert.That (converter.InputStreamBufferSize, Is.EqualTo (4096), "InputStreamBufferSize");
+			Assert.That (converter.OutputEncoding, Is.EqualTo (Encoding.UTF8), "OutputEncoding");
+			Assert.That (converter.OutputFormat, Is.EqualTo (TextFormat.Html), "OutputFormat");
+			Assert.That (converter.OutputStreamBufferSize, Is.EqualTo (4096), "OutputStreamBufferSize");
 		}
 
 		void ReplaceUrlsWithFileNames (HtmlTagContext ctx, HtmlWriter htmlWriter)
@@ -112,9 +108,9 @@ namespace UnitTests.Text {
 			var converter = new HtmlToHtml { Header = null, Footer = null, HtmlTagCallback = ReplaceUrlsWithFileNames };
 			var result = converter.Convert (text);
 
-			Assert.AreEqual (TextFormat.Html, converter.InputFormat, "InputFormat");
-			Assert.AreEqual (TextFormat.Html, converter.OutputFormat, "OutputFormat");
-			Assert.AreEqual (expected, result);
+			Assert.That (converter.InputFormat, Is.EqualTo (TextFormat.Html), "InputFormat");
+			Assert.That (converter.OutputFormat, Is.EqualTo (TextFormat.Html), "OutputFormat");
+			Assert.That (result, Is.EqualTo (expected));
 		}
 
 		void SupressInnerContentCallback (HtmlTagContext ctx, HtmlWriter htmlWriter)
@@ -158,7 +154,7 @@ namespace UnitTests.Text {
 
 			var result = converter.Convert (input);
 
-			Assert.AreEqual (expected, result);
+			Assert.That (result, Is.EqualTo (expected));
 		}
 
 		[Test]
@@ -170,7 +166,7 @@ namespace UnitTests.Text {
 
 			var result = converter.Convert (input);
 
-			Assert.AreEqual (expected, result);
+			Assert.That (result, Is.EqualTo (expected));
 		}
 
 		[Test]
@@ -182,7 +178,7 @@ namespace UnitTests.Text {
 
 			var result = converter.Convert (input);
 
-			Assert.AreEqual (expected, result);
+			Assert.That (result, Is.EqualTo (expected));
 		}
 
 		[Test]
@@ -199,7 +195,7 @@ namespace UnitTests.Text {
 
 			var result = converter.Convert (input);
 
-			Assert.AreEqual (expected, result);
+			Assert.That (result, Is.EqualTo (expected));
 		}
 
 		[Test]
@@ -216,7 +212,19 @@ namespace UnitTests.Text {
 
 			var result = converter.Convert (input);
 
-			Assert.AreEqual (expected, result);
+			Assert.That (result, Is.EqualTo (expected));
+		}
+
+		[Test]
+		public void TestIssue808 ()
+		{
+			const string input = "<html><body>I'm on holiday until&nbsp; June 17, 2022.&#13;</body></html>";
+			const string expected = "<html><body>I'm on holiday until&nbsp; June 17, 2022.&#13;</body></html>";
+			var converter = new HtmlToHtml ();
+
+			var result = converter.Convert (input);
+
+			Assert.That (result, Is.EqualTo (expected));
 		}
 	}
 }

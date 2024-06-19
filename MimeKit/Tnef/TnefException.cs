@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -56,6 +56,7 @@ namespace MimeKit.Tnef {
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="info"/> is <c>null</c>.
 		/// </exception>
+		[Obsolete ("This API supports obsolete formatter-based serialization. It should not be called or extended by application code.")]
 		protected TnefException (SerializationInfo info, StreamingContext context) : base (info, context)
 		{
 			Error = (TnefComplianceStatus) info.GetValue ("Error", typeof (TnefComplianceStatus));
@@ -104,6 +105,9 @@ namespace MimeKit.Tnef {
 		/// <paramref name="info"/> is <c>null</c>.
 		/// </exception>
 		[SecurityCritical]
+#if NET8_0_OR_GREATER
+		[Obsolete ("This API supports obsolete formatter-based serialization. It should not be called or extended by application code.")]
+#endif
 		public override void GetObjectData (SerializationInfo info, StreamingContext context)
 		{
 			base.GetObjectData (info, context);

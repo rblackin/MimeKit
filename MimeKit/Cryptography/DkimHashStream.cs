@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -44,13 +44,13 @@ namespace MimeKit.Cryptography {
 	class DkimHashStream : Stream
 	{
 #if ENABLE_NATIVE_DKIM
-		HashAlgorithm digest;
+		readonly HashAlgorithm digest;
 #else
-		IDigest digest;
+		readonly IDigest digest;
 #endif
+		readonly int max;
 		bool disposed;
 		int length;
-		int max;
 
 		/// <summary>
 		/// Initialize a new instance of the <see cref="DkimHashStream"/> class.

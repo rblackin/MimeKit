@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -87,16 +87,14 @@ namespace MimeKit.Text {
 		{
 			GetIndexDelegate getStartIndex, getEndIndex;
 			int endIndex = startIndex + count;
-			UrlPattern url;
-			string pattern;
 			int index;
 
-			if ((index = trie.Search (text, startIndex, count, out pattern)) == -1) {
+			if ((index = trie.Search (text, startIndex, count, out var pattern)) == -1) {
 				match = null;
 				return false;
 			}
 
-			if (!patterns.TryGetValue (pattern, out url)) {
+			if (!patterns.TryGetValue (pattern, out var url)) {
 				match = null;
 				return false;
 			}
@@ -602,12 +600,23 @@ namespace MimeKit.Text {
 					index++;
 			}
 
-			// check for a path
-			if (index < endIndex && text[index] == '/') {
-				index++;
-
-				while (index < endIndex && IsUrlSafe (text[index]) && text[index] != close)
+			// check for a path or query in cases where the link looks like this: https://www.domain.com?query
+			if (index < endIndex && (text[index] == '/' || text[index] == '?')) {
+				if (text[index] == '/')
 					index++;
+
+				while (index < endIndex && text[index] != close) {
+					if (text[index] == '?' || text[index] == '&') {
+						if (index + 1 >= endIndex || !char.IsLetterOrDigit (text[index + 1]))
+							break;
+
+						index++;
+					} else if (!IsUrlSafe (text[index])) {
+						break;
+					}
+
+					index++;
+				}
 			}
 
 			match.EndIndex = index;

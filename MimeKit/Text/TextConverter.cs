@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -105,7 +105,7 @@ namespace MimeKit.Text {
 		public Encoding InputEncoding {
 			get { return inputEncoding; }
 			set {
-				if (value == null)
+				if (value is null)
 					throw new ArgumentNullException (nameof (value));
 
 				inputEncoding = value;
@@ -136,7 +136,7 @@ namespace MimeKit.Text {
 		public Encoding OutputEncoding {
 			get { return outputEncoding; }
 			set {
-				if (value == null)
+				if (value is null)
 					throw new ArgumentNullException (nameof (value));
 
 				outputEncoding = value;
@@ -245,10 +245,10 @@ namespace MimeKit.Text {
 		/// </exception>
 		public virtual void Convert (Stream source, Stream destination)
 		{
-			if (source == null)
+			if (source is null)
 				throw new ArgumentNullException (nameof (source));
 
-			if (destination == null)
+			if (destination is null)
 				throw new ArgumentNullException (nameof (destination));
 
 			using (var writer = CreateWriter (destination)) {
@@ -275,10 +275,10 @@ namespace MimeKit.Text {
 		/// </exception>
 		public virtual void Convert (Stream source, TextWriter writer)
 		{
-			if (source == null)
+			if (source is null)
 				throw new ArgumentNullException (nameof (source));
 
-			if (writer == null)
+			if (writer is null)
 				throw new ArgumentNullException (nameof (writer));
 
 			using (var reader = CreateReader (source))
@@ -302,10 +302,10 @@ namespace MimeKit.Text {
 		/// </exception>
 		public virtual void Convert (TextReader reader, Stream destination)
 		{
-			if (reader == null)
+			if (reader is null)
 				throw new ArgumentNullException (nameof (reader));
 
-			if (destination == null)
+			if (destination is null)
 				throw new ArgumentNullException (nameof (destination));
 
 			using (var writer = CreateWriter (destination)) {
@@ -347,7 +347,7 @@ namespace MimeKit.Text {
 		/// </exception>
 		public virtual string Convert (string text)
 		{
-			if (text == null)
+			if (text is null)
 				throw new ArgumentNullException (nameof (text));
 
 			using (var reader = new StringReader (text)) {

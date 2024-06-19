@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -45,7 +45,7 @@ namespace MimeKit.IO.Filters {
 
 		static Encoding GetEncoding (string paramName, string encodingName)
 		{
-			if (encodingName == null)
+			if (encodingName is null)
 				throw new ArgumentNullException (paramName);
 
 			return CharsetUtils.GetEncoding (encodingName);
@@ -71,8 +71,8 @@ namespace MimeKit.IO.Filters {
 		/// <para>The <paramref name="targetEncodingName"/> is not supported by the system.</para>
 		/// </exception>
 		public CharsetFilter (string sourceEncodingName, string targetEncodingName)
-			: this (GetEncoding ("sourceEncodingName", sourceEncodingName),
-				GetEncoding ("targetEncodingName", targetEncodingName))
+			: this (GetEncoding (nameof (sourceEncodingName), sourceEncodingName),
+				GetEncoding (nameof (targetEncodingName), targetEncodingName))
 		{
 		}
 
@@ -116,21 +116,21 @@ namespace MimeKit.IO.Filters {
 		/// </exception>
 		public CharsetFilter (Encoding sourceEncoding, Encoding targetEncoding)
 		{
-			if (sourceEncoding == null)
+			if (sourceEncoding is null)
 				throw new ArgumentNullException (nameof (sourceEncoding));
 
-			if (targetEncoding == null)
+			if (targetEncoding is null)
 				throw new ArgumentNullException (nameof (targetEncoding));
 
 			SourceEncoding = sourceEncoding;
 			TargetEncoding = targetEncoding;
 
-			decoder = (Decoder) SourceEncoding.GetDecoder ();
-			encoder = (Encoder) TargetEncoding.GetEncoder ();
+			decoder = SourceEncoding.GetDecoder ();
+			encoder = TargetEncoding.GetEncoder ();
 		}
 
 		/// <summary>
-		/// Gets the source encoding.
+		/// Get the source encoding.
 		/// </summary>
 		/// <remarks>
 		/// Gets the source encoding.
@@ -141,7 +141,7 @@ namespace MimeKit.IO.Filters {
 		}
 
 		/// <summary>
-		/// Gets the target encoding.
+		/// Get the target encoding.
 		/// </summary>
 		/// <remarks>
 		/// Gets the target encoding.
@@ -214,7 +214,7 @@ namespace MimeKit.IO.Filters {
 		}
 
 		/// <summary>
-		/// Resets the filter.
+		/// Reset the filter.
 		/// </summary>
 		/// <remarks>
 		/// Resets the filter.

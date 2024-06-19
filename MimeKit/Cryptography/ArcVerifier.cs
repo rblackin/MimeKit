@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -367,17 +367,17 @@ namespace MimeKit.Cryptography {
 		{
 		}
 
-		static void ValidateArcMessageSignatureParameters (IDictionary<string, string> parameters, out DkimSignatureAlgorithm algorithm, out DkimCanonicalizationAlgorithm headerAlgorithm,
+		static void ValidateArcMessageSignatureParameters (Dictionary<string, string> parameters, out DkimSignatureAlgorithm algorithm, out DkimCanonicalizationAlgorithm headerAlgorithm,
 			out DkimCanonicalizationAlgorithm bodyAlgorithm, out string d, out string s, out string q, out string[] headers, out string bh, out string b, out int maxLength)
 		{
 			ValidateCommonSignatureParameters ("ARC-Message-Signature", parameters, out algorithm, out headerAlgorithm, out bodyAlgorithm, out d, out s, out q, out headers, out bh, out b, out maxLength);
 		}
 
-		static void ValidateArcSealParameters (IDictionary<string, string> parameters, out DkimSignatureAlgorithm algorithm, out string d, out string s, out string q, out string b)
+		static void ValidateArcSealParameters (Dictionary<string, string> parameters, out DkimSignatureAlgorithm algorithm, out string d, out string s, out string q, out string b)
 		{
 			ValidateCommonParameters ("ARC-Seal", parameters, out algorithm, out d, out s, out q, out b);
 
-			if (parameters.TryGetValue ("h", out string h))
+			if (parameters.TryGetValue ("h", out _))
 				throw new FormatException ("Malformed ARC-Seal header: the 'h' parameter tag is not allowed.");
 		}
 
@@ -455,7 +455,7 @@ namespace MimeKit.Cryptography {
 
 					WriteHeaderRelaxed (options, filtered, seal, true);
 
-					filtered.Flush ();
+					filtered.Flush (cancellationToken);
 				}
 
 				return stream.VerifySignature (b);
@@ -533,7 +533,7 @@ namespace MimeKit.Cryptography {
 						break;
 					}
 
-					if (!int.TryParse (value, NumberStyles.Integer, CultureInfo.InvariantCulture, out instance) || instance < 1 || instance > 50) {
+					if (!int.TryParse (value, NumberStyles.None, CultureInfo.InvariantCulture, out instance) || instance < 1 || instance > 50) {
 						if (throwOnError)
 							throw new FormatException (string.Format (CultureInfo.InvariantCulture, "Invalid instance tag in {0} header: i={1}", header.Id.ToHeaderName (), value));
 
@@ -737,7 +737,7 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
-		public ArcValidationResult Verify (FormatOptions options, MimeMessage message, CancellationToken cancellationToken = default (CancellationToken))
+		public ArcValidationResult Verify (FormatOptions options, MimeMessage message, CancellationToken cancellationToken = default)
 		{
 			return VerifyAsync (options, message, false, cancellationToken).GetAwaiter ().GetResult ();
 		}
@@ -763,7 +763,7 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
-		public Task<ArcValidationResult> VerifyAsync (FormatOptions options, MimeMessage message, CancellationToken cancellationToken = default (CancellationToken))
+		public Task<ArcValidationResult> VerifyAsync (FormatOptions options, MimeMessage message, CancellationToken cancellationToken = default)
 		{
 			return VerifyAsync (options, message, true, cancellationToken);
 		}
@@ -786,7 +786,7 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
-		public ArcValidationResult Verify (MimeMessage message, CancellationToken cancellationToken = default (CancellationToken))
+		public ArcValidationResult Verify (MimeMessage message, CancellationToken cancellationToken = default)
 		{
 			return Verify (FormatOptions.Default, message, cancellationToken);
 		}
@@ -809,7 +809,7 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
-		public Task<ArcValidationResult> VerifyAsync (MimeMessage message, CancellationToken cancellationToken = default (CancellationToken))
+		public Task<ArcValidationResult> VerifyAsync (MimeMessage message, CancellationToken cancellationToken = default)
 		{
 			return VerifyAsync (FormatOptions.Default, message, cancellationToken);
 		}

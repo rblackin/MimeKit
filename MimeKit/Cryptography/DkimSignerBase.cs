@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -135,6 +135,17 @@ namespace MimeKit.Cryptography {
 		public DkimCanonicalizationAlgorithm BodyCanonicalizationAlgorithm {
 			get; set;
 		}
+		
+		/// <summary>
+		/// Get or set the timespan after which signatures are no longer valid.
+		/// </summary>
+		/// <remarks>
+		/// Get or set the timespan after which signatures are no longer valid.
+		/// </remarks>
+		/// <value>The signatures expiration timespan value.</value>
+		public TimeSpan? SignaturesExpireAfter {
+			get; set;
+		}
 
 		/// <summary>
 		/// Get or set the canonicalization algorithm to use for the message headers.
@@ -172,8 +183,8 @@ namespace MimeKit.Cryptography {
 
 				if (keyObject is AsymmetricCipherKeyPair pair) {
 					key = pair.Private;
-				} else if (keyObject is AsymmetricKeyParameter) {
-					key = (AsymmetricKeyParameter) keyObject;
+				} else if (keyObject is AsymmetricKeyParameter param) {
+					key = param;
 				}
 			}
 
@@ -255,6 +266,13 @@ namespace MimeKit.Cryptography {
 			hash.TransformBlock (input, inOff, length, null, 0);
 		}
 
+#if NET6_0_OR_GREATER
+		public void BlockUpdate (ReadOnlySpan<byte> input)
+		{
+			throw new NotImplementedException ();
+		}
+#endif
+
 		public byte[] GenerateSignature ()
 		{
 			hash.TransformFinalBlock (new byte[0], 0, 0);
@@ -265,6 +283,11 @@ namespace MimeKit.Cryptography {
 		public void Init (bool forSigning, ICipherParameters parameters)
 		{
 			throw new NotImplementedException ();
+		}
+
+		public int GetMaxSignatureSize ()
+		{
+			return hash.HashSize;
 		}
 
 		public void Reset ()

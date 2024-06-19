@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -29,7 +29,6 @@ using System.IO;
 using System.Text;
 using System.Linq;
 using System.Threading;
-using System.Globalization;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 
@@ -38,12 +37,6 @@ using System.Net.Mail;
 #endif
 
 #if ENABLE_CRYPTO
-using Org.BouncyCastle.Asn1;
-using Org.BouncyCastle.Asn1.Pkcs;
-using Org.BouncyCastle.Crypto;
-using Org.BouncyCastle.Security;
-using Org.BouncyCastle.Crypto.Parameters;
-
 using MimeKit.Cryptography;
 #endif
 
@@ -61,12 +54,38 @@ namespace MimeKit {
 	/// tree of MIME entities such as a text/plain MIME part and a collection
 	/// of file attachments.</para>
 	/// </remarks>
-	public class MimeMessage
+	public class MimeMessage : IMimeMessage
 	{
 		static readonly HeaderId[] StandardAddressHeaders = {
 			HeaderId.ResentFrom, HeaderId.ResentReplyTo, HeaderId.ResentTo, HeaderId.ResentCc, HeaderId.ResentBcc,
 			HeaderId.From, HeaderId.ReplyTo, HeaderId.To, HeaderId.Cc, HeaderId.Bcc
 		};
+
+		enum LazyLoadedFields {
+			None            = 0,
+			ResentSender    = 1 << 0,
+			ResentFrom      = 1 << 1,
+			ResentReplyTo   = 1 << 2,
+			ResentTo        = 1 << 3,
+			ResentCc        = 1 << 4,
+			ResentBcc       = 1 << 5,
+			ResentDate      = 1 << 6,
+			ResentMessageId = 1 << 7,
+			Sender          = 1 << 8,
+			From            = 1 << 9,
+			ReplyTo         = 1 << 10,
+			To              = 1 << 11,
+			Cc              = 1 << 12,
+			Bcc             = 1 << 13,
+			Date            = 1 << 14,
+			MessageId       = 1 << 15,
+			InReplyTo       = 1 << 16,
+			References      = 1 << 17,
+			MimeVersion     = 1 << 18,
+			Importance      = 1 << 29,
+			Priority        = 1 << 20,
+			XPriority       = 1 << 21
+		}
 
 		readonly Dictionary<HeaderId, InternetAddressList> addresses;
 		MessageImportance importance = MessageImportance.Normal;
@@ -74,6 +93,7 @@ namespace MimeKit {
 		MessagePriority priority = MessagePriority.Normal;
 		readonly RfcComplianceMode compliance;
 		readonly MessageIdList references;
+		LazyLoadedFields lazyLoaded;
 		MailboxAddress resentSender;
 		DateTimeOffset resentDate;
 		string resentMessageId;
@@ -100,9 +120,6 @@ namespace MimeKit {
 
 			references = new MessageIdList ();
 			references.Changed += ReferencesChanged;
-			inreplyto = null;
-
-			Headers.Changed += HeadersChanged;
 
 			// add all of our message headers...
 			foreach (var header in headers) {
@@ -111,6 +128,8 @@ namespace MimeKit {
 
 				Headers.Add (header);
 			}
+
+			Headers.Changed += HeadersChanged;
 		}
 
 		internal MimeMessage (ParserOptions options)
@@ -129,7 +148,6 @@ namespace MimeKit {
 
 			references = new MessageIdList ();
 			references.Changed += ReferencesChanged;
-			inreplyto = null;
 
 			Headers.Changed += HeadersChanged;
 		}
@@ -151,28 +169,25 @@ namespace MimeKit {
 		/// </exception>
 		public MimeMessage (params object[] args) : this (ParserOptions.Default.Clone ())
 		{
-			if (args == null)
+			if (args is null)
 				throw new ArgumentNullException (nameof (args));
 
 			MimeEntity body = null;
 
-			foreach (object obj in args) {
-				if (obj == null)
+			foreach (var obj in args) {
+				if (obj is null)
 					continue;
 
 				// Just add the headers and let the events (already setup) keep the
 				// addresses in sync.
-
-				var header = obj as Header;
-				if (header != null) {
+				if (obj is Header header) {
 					if (!header.Field.StartsWith ("Content-", StringComparison.OrdinalIgnoreCase))
 						Headers.Add (header);
 
 					continue;
 				}
 
-				var headers = obj as IEnumerable<Header>;
-				if (headers != null) {
+				if (obj is IEnumerable<Header> headers) {
 					foreach (var h in headers) {
 						if (!h.Field.StartsWith ("Content-", StringComparison.OrdinalIgnoreCase))
 							Headers.Add (h);
@@ -181,8 +196,7 @@ namespace MimeKit {
 					continue;
 				}
 
-				var entity = obj as MimeEntity;
-				if (entity != null) {
+				if (obj is MimeEntity entity) {
 					if (body != null)
 						throw new ArgumentException ("Message body should not be specified more than once.");
 
@@ -196,16 +210,14 @@ namespace MimeKit {
 			if (body != null)
 				Body = body;
 
-			// Do exactly as in the parameterless constructor but avoid setting a default
-			// value if an header already provided one.
-
+			// Only set the default headers if they have not already been provided.
 			if (!Headers.Contains (HeaderId.From))
 				Headers[HeaderId.From] = string.Empty;
-			if (date == default (DateTimeOffset))
+			if (!Headers.Contains (HeaderId.Date))
 				Date = DateTimeOffset.Now;
 			if (!Headers.Contains (HeaderId.Subject))
 				Subject = string.Empty;
-			if (messageId == null)
+			if (!Headers.Contains (HeaderId.MessageId))
 				MessageId = MimeUtils.GenerateMessageId ();
 		}
 
@@ -242,6 +254,19 @@ namespace MimeKit {
 		}
 
 		/// <summary>
+		/// Releases unmanaged resources and performs other cleanup operations before the
+		/// <see cref="MimeMessage"/> is reclaimed by garbage collection.
+		/// </summary>
+		/// <remarks>
+		/// Releases unmanaged resources and performs other cleanup operations before the
+		/// <see cref="MimeMessage"/> is reclaimed by garbage collection.
+		/// </remarks>
+		~MimeMessage ()
+		{
+			Dispose (false);
+		}
+
+		/// <summary>
 		/// Get or set the mbox marker.
 		/// </summary>
 		/// <remarks>
@@ -261,8 +286,9 @@ namespace MimeKit {
 		/// a message will contain transmission headers such as From and To along
 		/// with metadata headers such as Subject and Date, but may include just
 		/// about anything.</para>
-		/// <note type="tip">To access any MIME headers other than
-		/// <see cref="HeaderId.MimeVersion"/>, you will need to access the
+		/// <note type="tip">To access any MIME headers such as <see cref="HeaderId.ContentType"/>,
+		/// <see cref="HeaderId.ContentDisposition"/>, <see cref="HeaderId.ContentTransferEncoding"/>
+		/// or any other <c>Content-*</c> header, you will need to access the
 		/// <see cref="MimeEntity.Headers"/> property of the <see cref="Body"/>.
 		/// </note>
 		/// </remarks>
@@ -282,7 +308,21 @@ namespace MimeKit {
 		/// <paramref name="value"/> is not a valid <see cref="MessageImportance"/>.
 		/// </exception>
 		public MessageImportance Importance {
-			get { return importance; }
+			get {
+				if ((lazyLoaded & LazyLoadedFields.Importance) == 0) {
+					if (Headers.TryGetHeader (HeaderId.Importance, out var header)) {
+						switch (header.Value.ToLowerInvariant ().Trim ()) {
+						case "high": importance = MessageImportance.High; break;
+						case "low": importance = MessageImportance.Low; break;
+						default: importance = MessageImportance.Normal; break;
+						}
+					}
+
+					lazyLoaded |= LazyLoadedFields.Importance;
+				}
+
+				return importance;
+			}
 			set {
 				if (value == importance)
 					return;
@@ -292,6 +332,7 @@ namespace MimeKit {
 				case MessageImportance.High:
 				case MessageImportance.Low:
 					SetHeader ("Importance", value.ToString ().ToLowerInvariant ());
+					lazyLoaded |= LazyLoadedFields.Importance;
 					importance = value;
 					break;
 				default:
@@ -311,7 +352,21 @@ namespace MimeKit {
 		/// <paramref name="value"/> is not a valid <see cref="MessagePriority"/>.
 		/// </exception>
 		public MessagePriority Priority {
-			get { return priority; }
+			get {
+				if ((lazyLoaded & LazyLoadedFields.Priority) == 0) {
+					if (Headers.TryGetHeader (HeaderId.Priority, out var header)) {
+						switch (header.Value.ToLowerInvariant ().Trim ()) {
+						case "non-urgent": priority = MessagePriority.NonUrgent; break;
+						case "urgent": priority = MessagePriority.Urgent; break;
+						default: priority = MessagePriority.Normal; break;
+						}
+					}
+
+					lazyLoaded |= LazyLoadedFields.Priority;
+				}
+
+				return priority;
+			}
 			set {
 				if (value == priority)
 					return;
@@ -334,6 +389,7 @@ namespace MimeKit {
 
 				SetHeader ("Priority", rawValue);
 
+				lazyLoaded |= LazyLoadedFields.Priority;
 				priority = value;
 			}
 		}
@@ -349,7 +405,25 @@ namespace MimeKit {
 		/// <paramref name="value"/> is not a valid <see cref="MessagePriority"/>.
 		/// </exception>
 		public XMessagePriority XPriority {
-			get { return xpriority; }
+			get {
+				if ((lazyLoaded & LazyLoadedFields.XPriority) == 0) {
+					if (Headers.TryGetHeader (HeaderId.XPriority, out var header)) {
+						int index = 0;
+
+						ParseUtils.SkipWhiteSpace (header.RawValue, ref index, header.RawValue.Length);
+
+						if (ParseUtils.TryParseInt32 (header.RawValue, ref index, header.RawValue.Length, out var number)) {
+							xpriority = (XMessagePriority) Math.Min (Math.Max (number, 1), 5);
+						} else {
+							xpriority = XMessagePriority.Normal;
+						}
+					}
+
+					lazyLoaded |= LazyLoadedFields.XPriority;
+				}
+
+				return xpriority;
+			}
 			set {
 				if (value == xpriority)
 					return;
@@ -378,6 +452,7 @@ namespace MimeKit {
 
 				SetHeader ("X-Priority", rawValue);
 
+				lazyLoaded |= LazyLoadedFields.XPriority;
 				xpriority = value;
 			}
 		}
@@ -391,13 +466,27 @@ namespace MimeKit {
 		/// </remarks>
 		/// <value>The address in the Sender header.</value>
 		public MailboxAddress Sender {
-			get { return sender; }
+			get {
+				if ((lazyLoaded & LazyLoadedFields.Sender) == 0) {
+					if (Headers.TryGetHeader (HeaderId.Sender, out var header)) {
+						var rawValue = header.RawValue;
+						int index = 0;
+
+						MailboxAddress.TryParse (Headers.Options, rawValue, ref index, rawValue.Length, false, out sender);
+					}
+
+					lazyLoaded |= LazyLoadedFields.Sender;
+				}
+
+				return sender;
+			}
 			set {
-				if (value == sender)
+				if ((lazyLoaded & LazyLoadedFields.Sender) != 0 && value == sender)
 					return;
 
-				if (value == null) {
+				if (value is null) {
 					RemoveHeader (HeaderId.Sender);
+					lazyLoaded |= LazyLoadedFields.Sender;
 					sender = null;
 					return;
 				}
@@ -412,7 +501,7 @@ namespace MimeKit {
 				var raw = Encoding.UTF8.GetBytes (builder.ToString ());
 
 				ReplaceHeader (HeaderId.Sender, "Sender", raw);
-
+				lazyLoaded |= LazyLoadedFields.Sender;
 				sender = value;
 			}
 		}
@@ -426,13 +515,27 @@ namespace MimeKit {
 		/// </remarks>
 		/// <value>The address in the Resent-Sender header.</value>
 		public MailboxAddress ResentSender {
-			get { return resentSender; }
+			get {
+				if ((lazyLoaded & LazyLoadedFields.ResentSender) == 0) {
+					if (Headers.TryGetHeader (HeaderId.ResentSender, out var header)) {
+						var rawValue = header.RawValue;
+						int index = 0;
+
+						MailboxAddress.TryParse (Headers.Options, rawValue, ref index, rawValue.Length, false, out resentSender);
+					}
+
+					lazyLoaded |= LazyLoadedFields.ResentSender;
+				}
+
+				return resentSender;
+			}
 			set {
-				if (value == resentSender)
+				if ((lazyLoaded & LazyLoadedFields.ResentSender) != 0 && value == resentSender)
 					return;
 
-				if (value == null) {
+				if (value is null) {
 					RemoveHeader (HeaderId.ResentSender);
+					lazyLoaded |= LazyLoadedFields.ResentSender;
 					resentSender = null;
 					return;
 				}
@@ -447,9 +550,27 @@ namespace MimeKit {
 				var raw = Encoding.UTF8.GetBytes (builder.ToString ());
 
 				ReplaceHeader (HeaderId.ResentSender, "Resent-Sender", raw);
-
+				lazyLoaded |= LazyLoadedFields.ResentSender;
 				resentSender = value;
 			}
+		}
+
+		InternetAddressList GetLazyLoadedAddresses (HeaderId id, LazyLoadedFields bit)
+		{
+			var list = addresses[id];
+
+			if ((lazyLoaded & bit) == 0) {
+				for (int i = 0; i < Headers.Count; i++) {
+					if (Headers[i].Id != id)
+						continue;
+
+					AddAddresses (Headers[i], list);
+				}
+
+				lazyLoaded |= bit;
+			}
+
+			return list;
 		}
 
 		/// <summary>
@@ -464,7 +585,7 @@ namespace MimeKit {
 		/// </remarks>
 		/// <value>The list of addresses in the From header.</value>
 		public InternetAddressList From {
-			get { return addresses[HeaderId.From]; }
+			get { return GetLazyLoadedAddresses (HeaderId.From, LazyLoadedFields.From); }
 		}
 
 		/// <summary>
@@ -480,7 +601,7 @@ namespace MimeKit {
 		/// </remarks>
 		/// <value>The list of addresses in the Resent-From header.</value>
 		public InternetAddressList ResentFrom {
-			get { return addresses[HeaderId.ResentFrom]; }
+			get { return GetLazyLoadedAddresses (HeaderId.ResentFrom, LazyLoadedFields.ResentFrom); }
 		}
 
 		/// <summary>
@@ -496,7 +617,7 @@ namespace MimeKit {
 		/// </remarks>
 		/// <value>The list of addresses in the Reply-To header.</value>
 		public InternetAddressList ReplyTo {
-			get { return addresses[HeaderId.ReplyTo]; }
+			get { return GetLazyLoadedAddresses (HeaderId.ReplyTo, LazyLoadedFields.ReplyTo); }
 		}
 
 		/// <summary>
@@ -512,7 +633,7 @@ namespace MimeKit {
 		/// </remarks>
 		/// <value>The list of addresses in the Resent-Reply-To header.</value>
 		public InternetAddressList ResentReplyTo {
-			get { return addresses[HeaderId.ResentReplyTo]; }
+			get { return GetLazyLoadedAddresses (HeaderId.ResentReplyTo, LazyLoadedFields.ResentReplyTo); }
 		}
 
 		/// <summary>
@@ -524,7 +645,7 @@ namespace MimeKit {
 		/// </remarks>
 		/// <value>The list of addresses in the To header.</value>
 		public InternetAddressList To {
-			get { return addresses[HeaderId.To]; }
+			get { return GetLazyLoadedAddresses (HeaderId.To, LazyLoadedFields.To); }
 		}
 
 		/// <summary>
@@ -536,7 +657,7 @@ namespace MimeKit {
 		/// </remarks>
 		/// <value>The list of addresses in the Resent-To header.</value>
 		public InternetAddressList ResentTo {
-			get { return addresses[HeaderId.ResentTo]; }
+			get { return GetLazyLoadedAddresses (HeaderId.ResentTo, LazyLoadedFields.ResentTo); }
 		}
 
 		/// <summary>
@@ -549,7 +670,7 @@ namespace MimeKit {
 		/// </remarks>
 		/// <value>The list of addresses in the Cc header.</value>
 		public InternetAddressList Cc {
-			get { return addresses[HeaderId.Cc]; }
+			get { return GetLazyLoadedAddresses (HeaderId.Cc, LazyLoadedFields.Cc); }
 		}
 
 		/// <summary>
@@ -562,19 +683,19 @@ namespace MimeKit {
 		/// </remarks>
 		/// <value>The list of addresses in the Resent-Cc header.</value>
 		public InternetAddressList ResentCc {
-			get { return addresses[HeaderId.ResentCc]; }
+			get { return GetLazyLoadedAddresses (HeaderId.ResentCc, LazyLoadedFields.ResentCc); }
 		}
 
 		/// <summary>
 		/// Get the list of addresses in the Bcc header.
 		/// </summary>
 		/// <remarks>
-		/// Recipients in the Blind-Carpbon-Copy list will not be visible to
+		/// Recipients in the Blind-Carbon-Copy list will not be visible to
 		/// the other recipients of the message.
 		/// </remarks>
 		/// <value>The list of addresses in the Bcc header.</value>
 		public InternetAddressList Bcc {
-			get { return addresses[HeaderId.Bcc]; }
+			get { return GetLazyLoadedAddresses (HeaderId.Bcc, LazyLoadedFields.Bcc); }
 		}
 
 		/// <summary>
@@ -586,7 +707,7 @@ namespace MimeKit {
 		/// </remarks>
 		/// <value>The list of addresses in the Resent-Bcc header.</value>
 		public InternetAddressList ResentBcc {
-			get { return addresses[HeaderId.ResentBcc]; }
+			get { return GetLazyLoadedAddresses (HeaderId.ResentBcc, LazyLoadedFields.ResentBcc); }
 		}
 
 		/// <summary>
@@ -603,7 +724,7 @@ namespace MimeKit {
 		public string Subject {
 			get { return Headers["Subject"]; }
 			set {
-				if (value == null)
+				if (value is null)
 					throw new ArgumentNullException (nameof (value));
 
 				SetHeader ("Subject", value);
@@ -619,12 +740,25 @@ namespace MimeKit {
 		/// </remarks>
 		/// <value>The date of the message.</value>
 		public DateTimeOffset Date {
-			get { return date; }
+			get {
+				if ((lazyLoaded & LazyLoadedFields.Date) == 0) {
+					if (Headers.TryGetHeader (HeaderId.Date, out var header)) {
+						var rawValue = header.RawValue;
+
+						DateUtils.TryParse (rawValue, 0, rawValue.Length, out date);
+					}
+
+					lazyLoaded |= LazyLoadedFields.Date;
+				}
+
+				return date;
+			}
 			set {
-				if (date == value)
+				if ((lazyLoaded & LazyLoadedFields.Date) != 0 && date == value)
 					return;
 
 				SetHeader ("Date", DateUtils.FormatDate (value));
+				lazyLoaded |= LazyLoadedFields.Date;
 				date = value;
 			}
 		}
@@ -637,12 +771,25 @@ namespace MimeKit {
 		/// </remarks>
 		/// <value>The Resent-Date of the message.</value>
 		public DateTimeOffset ResentDate {
-			get { return resentDate; }
+			get {
+				if ((lazyLoaded & LazyLoadedFields.ResentDate) == 0) {
+					if (Headers.TryGetHeader (HeaderId.ResentDate, out var header)) {
+						var rawValue = header.RawValue;
+
+						DateUtils.TryParse (rawValue, 0, rawValue.Length, out resentDate);
+					}
+
+					lazyLoaded |= LazyLoadedFields.ResentDate;
+				}
+
+				return resentDate;
+			}
 			set {
 				if (resentDate == value)
 					return;
 
 				SetHeader ("Resent-Date", DateUtils.FormatDate (value));
+				lazyLoaded |= LazyLoadedFields.ResentDate;
 				resentDate = value;
 			}
 		}
@@ -656,7 +803,22 @@ namespace MimeKit {
 		/// </remarks>
 		/// <value>The references.</value>
 		public MessageIdList References {
-			get { return references; }
+			get {
+				if ((lazyLoaded & LazyLoadedFields.References) == 0) {
+					if (Headers.TryGetHeader (HeaderId.References, out var header)) {
+						var rawValue = header.RawValue;
+
+						references.Changed -= ReferencesChanged;
+						foreach (var msgid in MimeUtils.EnumerateReferences (rawValue, 0, rawValue.Length))
+							references.Add (msgid);
+						references.Changed += ReferencesChanged;
+					}
+
+					lazyLoaded |= LazyLoadedFields.References;
+				}
+
+				return references;
+			}
 		}
 
 		/// <summary>
@@ -672,25 +834,38 @@ namespace MimeKit {
 		/// <paramref name="value"/> is improperly formatted.
 		/// </exception>
 		public string InReplyTo {
-			get { return inreplyto; }
+			get {
+				if ((lazyLoaded & LazyLoadedFields.InReplyTo) == 0) {
+					if (Headers.TryGetHeader (HeaderId.InReplyTo, out var header)) {
+						var rawValue = header.RawValue;
+
+						inreplyto = MimeUtils.EnumerateReferences (rawValue, 0, rawValue.Length).FirstOrDefault ();
+					}
+
+					lazyLoaded |= LazyLoadedFields.InReplyTo;
+				}
+
+				return inreplyto;
+			}
 			set {
-				if (inreplyto == value)
+				if ((lazyLoaded & LazyLoadedFields.InReplyTo) != 0 && inreplyto == value)
 					return;
 
-				if (value == null) {
+				if (value is null) {
 					RemoveHeader (HeaderId.InReplyTo);
+					lazyLoaded |= LazyLoadedFields.InReplyTo;
 					inreplyto = null;
 					return;
 				}
 
 				var buffer = Encoding.UTF8.GetBytes (value);
-				MailboxAddress mailbox;
 				int index = 0;
 
-				if (!MailboxAddress.TryParse (Headers.Options, buffer, ref index, buffer.Length, false, out mailbox))
+				if (!ParseUtils.TryParseMsgId (buffer, ref index, buffer.Length, false, false, out string msgid))
 					throw new ArgumentException ("Invalid Message-Id format.", nameof (value));
 
-				inreplyto = mailbox.Address;
+				lazyLoaded |= LazyLoadedFields.InReplyTo;
+				inreplyto = msgid;
 
 				SetHeader ("In-Reply-To", "<" + inreplyto + ">");
 			}
@@ -713,22 +888,34 @@ namespace MimeKit {
 		/// <paramref name="value"/> is improperly formatted.
 		/// </exception>
 		public string MessageId {
-			get { return messageId; }
+			get {
+				if ((lazyLoaded & LazyLoadedFields.MessageId) == 0) {
+					if (Headers.TryGetHeader (HeaderId.MessageId, out var header)) {
+						var rawValue = header.RawValue;
+
+						messageId = MimeUtils.ParseMessageId (rawValue, 0, rawValue.Length);
+					}
+
+					lazyLoaded |= LazyLoadedFields.MessageId;
+				}
+
+				return messageId;
+			}
 			set {
-				if (value == null)
+				if (value is null)
 					throw new ArgumentNullException (nameof (value));
 
-				if (messageId == value)
+				if ((lazyLoaded & LazyLoadedFields.MessageId) != 0 && messageId == value)
 					return;
 
 				var buffer = Encoding.UTF8.GetBytes (value);
-				MailboxAddress mailbox;
 				int index = 0;
 
-				if (!MailboxAddress.TryParse (Headers.Options, buffer, ref index, buffer.Length, false, out mailbox))
+				if (!ParseUtils.TryParseMsgId (buffer, ref index, buffer.Length, false, false, out string msgid))
 					throw new ArgumentException ("Invalid Message-Id format.", nameof (value));
 
-				messageId = mailbox.Address;
+				lazyLoaded |= LazyLoadedFields.MessageId;
+				messageId = msgid;
 
 				SetHeader ("Message-Id", "<" + messageId + ">");
 			}
@@ -751,22 +938,34 @@ namespace MimeKit {
 		/// <paramref name="value"/> is improperly formatted.
 		/// </exception>
 		public string ResentMessageId {
-			get { return resentMessageId; }
+			get {
+				if ((lazyLoaded & LazyLoadedFields.ResentMessageId) == 0) {
+					if (Headers.TryGetHeader (HeaderId.ResentMessageId, out var header)) {
+						var rawValue = header.RawValue;
+
+						resentMessageId = MimeUtils.ParseMessageId (rawValue, 0, rawValue.Length);
+					}
+
+					lazyLoaded |= LazyLoadedFields.ResentMessageId;
+				}
+
+				return resentMessageId;
+			}
 			set {
-				if (value == null)
+				if (value is null)
 					throw new ArgumentNullException (nameof (value));
 
-				if (resentMessageId == value)
+				if ((lazyLoaded & LazyLoadedFields.ResentMessageId) != 0 && resentMessageId == value)
 					return;
 
 				var buffer = Encoding.UTF8.GetBytes (value);
-				MailboxAddress mailbox;
 				int index = 0;
 
-				if (!MailboxAddress.TryParse (Headers.Options, buffer, ref index, buffer.Length, false, out mailbox))
+				if (!ParseUtils.TryParseMsgId (buffer, ref index, buffer.Length, false, false, out string msgid))
 					throw new ArgumentException ("Invalid Resent-Message-Id format.", nameof (value));
 
-				resentMessageId = mailbox.Address;
+				lazyLoaded |= LazyLoadedFields.ResentMessageId;
+				resentMessageId = msgid;
 
 				SetHeader ("Resent-Message-Id", "<" + resentMessageId + ">");
 			}
@@ -784,15 +983,28 @@ namespace MimeKit {
 		/// <paramref name="value"/> is <c>null</c>.
 		/// </exception>
 		public Version MimeVersion {
-			get { return version; }
+			get {
+				if ((lazyLoaded & LazyLoadedFields.MimeVersion) == 0) {
+					if (Headers.TryGetHeader (HeaderId.MimeVersion, out var header)) {
+						var rawValue = header.RawValue;
+
+						MimeUtils.TryParse (rawValue, 0, rawValue.Length, out version);
+					}
+
+					lazyLoaded |= LazyLoadedFields.MimeVersion;
+				}
+
+				return version;
+			}
 			set {
-				if (value == null)
+				if (value is null)
 					throw new ArgumentNullException (nameof (value));
 
 				if (version != null && version.CompareTo (value) == 0)
 					return;
 
 				SetHeader ("MIME-Version", value.ToString ());
+				lazyLoaded |= LazyLoadedFields.MimeVersion;
 				version = value;
 			}
 		}
@@ -810,71 +1022,6 @@ namespace MimeKit {
 		/// <value>The body of the message.</value>
 		public MimeEntity Body {
 			get; set;
-		}
-
-		static bool TryGetMultipartBody (Multipart multipart, TextFormat format, out string body)
-		{
-			var alternative = multipart as MultipartAlternative;
-
-			if (alternative != null) {
-				body = alternative.GetTextBody (format);
-				return body != null;
-			}
-
-			var related = multipart as MultipartRelated;
-			Multipart multi;
-			TextPart text;
-
-			if (related == null) {
-				// Note: This is probably a multipart/mixed... and if not, we can still treat it like it is.
-				for (int i = 0; i < multipart.Count; i++) {
-					multi = multipart[i] as Multipart;
-
-					// descend into nested multiparts, if there are any...
-					if (multi != null) {
-						if (TryGetMultipartBody (multi, format, out body))
-							return true;
-
-						// The text body should never come after a multipart.
-						break;
-					}
-
-					text = multipart[i] as TextPart;
-
-					// Look for the first non-attachment text part (realistically, the body text will
-					// preceed any attachments, but I'm not sure we can rely on that assumption).
-					if (text != null && !text.IsAttachment) {
-						if (text.IsFormat (format)) {
-							body = MultipartAlternative.GetText (text);
-							return true;
-						}
-
-						// Note: the first text/* part in a multipart/mixed is the text body.
-						// If it's not in the format we're looking for, then it doesn't exist.
-						break;
-					}
-				}
-			} else {
-				// Note: If the multipart/related root document is HTML, then this is the droid we are looking for.
-				var root = related.Root;
-
-				text = root as TextPart;
-
-				if (text != null) {
-					body = text.IsFormat (format) ? text.Text : null;
-					return body != null;
-				}
-
-				// maybe the root is another multipart (like multipart/alternative)?
-				multi = root as Multipart;
-
-				if (multi != null)
-					return TryGetMultipartBody (multi, format, out body);
-			}
-
-			body = null;
-
-			return false;
 		}
 
 		/// <summary>
@@ -910,18 +1057,11 @@ namespace MimeKit {
 		/// <param name="format">The desired text format.</param>
 		public string GetTextBody (TextFormat format)
 		{
-			var multipart = Body as Multipart;
-
-			if (multipart != null) {
-				string text;
-
-				if (TryGetMultipartBody (multipart, format, out text))
-					return text;
-			} else {
-				var body = Body as TextPart;
-
-				if (body != null && body.IsFormat (format) && !body.IsAttachment)
-					return body.Text;
+			if (Body is Multipart multipart) {
+				if (multipart.TryGetValue (format, out var body))
+					return MultipartAlternative.GetText (body);
+			} else if (Body is TextPart text && text.IsFormat (format) && !text.IsAttachment) {
+				return MultipartAlternative.GetText (text);
 			}
 
 			return null;
@@ -929,12 +1069,10 @@ namespace MimeKit {
 
 		static IEnumerable<MimeEntity> EnumerateMimeParts (MimeEntity entity)
 		{
-			if (entity == null)
+			if (entity is null)
 				yield break;
 
-			var multipart = entity as Multipart;
-
-			if (multipart != null) {
+			if (entity is Multipart multipart) {
 				foreach (var subpart in multipart) {
 					foreach (var part in EnumerateMimeParts (subpart))
 						yield return part;
@@ -976,7 +1114,65 @@ namespace MimeKit {
 			get { return EnumerateMimeParts (Body).Where (x => x.IsAttachment); }
 		}
 
-		static readonly byte[] ToStringWarning = Encoding.UTF8.GetBytes ("X-MimeKit-Warning: Do NOT use ToString() to serialize messages! Use one of the WriteTo() methods instead!");
+		static void AddMailboxes (List<MailboxAddress> recipients, HashSet<string> unique, IEnumerable<MailboxAddress> mailboxes)
+		{
+			foreach (var mailbox in mailboxes) {
+				if (unique is null || unique.Add (mailbox.Address))
+					recipients.Add (mailbox);
+			}
+		}
+
+		IList<MailboxAddress> GetMailboxes (bool includeSenders, bool onlyUnique)
+		{
+			HashSet<string> unique = onlyUnique ? new HashSet<string> (MimeUtils.OrdinalIgnoreCase) : null;
+			var recipients = new List<MailboxAddress> ();
+
+			if (ResentSender != null || ResentFrom.Count > 0) {
+				if (includeSenders) {
+					if (ResentSender != null) {
+						if (unique is null || unique.Add (ResentSender.Address))
+							recipients.Add (ResentSender);
+					}
+
+					AddMailboxes (recipients, unique, ResentFrom.Mailboxes);
+				}
+
+				AddMailboxes (recipients, unique, ResentTo.Mailboxes);
+				AddMailboxes (recipients, unique, ResentCc.Mailboxes);
+				AddMailboxes (recipients, unique, ResentBcc.Mailboxes);
+			} else {
+				if (includeSenders) {
+					if (Sender != null) {
+						if (unique is null || unique.Add (Sender.Address))
+							recipients.Add (Sender);
+					}
+
+					AddMailboxes (recipients, unique, From.Mailboxes);
+				}
+
+				AddMailboxes (recipients, unique, To.Mailboxes);
+				AddMailboxes (recipients, unique, Cc.Mailboxes);
+				AddMailboxes (recipients, unique, Bcc.Mailboxes);
+			}
+
+			return recipients;
+		}
+
+		/// <summary>
+		/// Get the concatenated list of recipients.
+		/// </summary>
+		/// <remarks>
+		/// <para>Gets the concatenated list of recipients.</para>
+		/// <para>If the <c>Resent-Sender</c> or <c>Resent-From</c> headers exist, then the recipients defined by the <c>Resent-To</c>,
+		/// <c>Resent-Cc</c> and <c>Resent-Bcc</c> headers will be used. Otherwise, the recipients defined by the <c>To</c>, <c>Cc</c>
+		/// and <c>Bcc</c> headers will be used.</para>
+		/// </remarks>
+		/// <param name="onlyUnique">If <c>true</c>, only mailboxes with a unique address will be included.</param>
+		/// <returns>The concatenated list of recipients.</returns>
+		public IList<MailboxAddress> GetRecipients (bool onlyUnique = false)
+		{
+			return GetMailboxes (false, onlyUnique);
+		}
 
 		/// <summary>
 		/// Returns a <see cref="String"/> that represents the <see cref="MimeMessage"/> for debugging purposes.
@@ -992,16 +1188,9 @@ namespace MimeKit {
 		public override string ToString ()
 		{
 			using (var memory = new MemoryStream ()) {
-				memory.Write (ToStringWarning, 0, ToStringWarning.Length);
-				memory.Write (FormatOptions.Default.NewLineBytes, 0, FormatOptions.Default.NewLineBytes.Length);
-
 				WriteTo (FormatOptions.Default, memory);
 
-#if !NETSTANDARD1_3 && !NETSTANDARD1_6
 				var buffer = memory.GetBuffer ();
-#else
-				var buffer = memory.ToArray ();
-#endif
 				int count = (int) memory.Length;
 
 				return CharsetUtils.Latin1.GetString (buffer, 0, count);
@@ -1025,7 +1214,7 @@ namespace MimeKit {
 		/// </exception>
 		public virtual void Accept (MimeVisitor visitor)
 		{
-			if (visitor == null)
+			if (visitor is null)
 				throw new ArgumentNullException (nameof (visitor));
 
 			visitor.VisitMimeMessage (this);
@@ -1050,7 +1239,7 @@ namespace MimeKit {
 				throw new ArgumentOutOfRangeException (nameof (maxLineLength));
 
 			if (Body != null) {
-				if (MimeVersion == null && Body.Headers.Count > 0)
+				if (MimeVersion is null && Body.Headers.Count > 0)
 					MimeVersion = new Version (1, 0);
 
 				Body.Prepare (constraint, maxLineLength);
@@ -1078,12 +1267,12 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public void WriteTo (FormatOptions options, Stream stream, bool headersOnly, CancellationToken cancellationToken = default (CancellationToken))
+		public void WriteTo (FormatOptions options, Stream stream, bool headersOnly, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (stream == null)
+			if (stream is null)
 				throw new ArgumentNullException (nameof (stream));
 
 			if (compliance == RfcComplianceMode.Strict && Body != null && Body.Headers.Count > 0 && !Headers.Contains (HeaderId.MimeVersion))
@@ -1110,9 +1299,7 @@ namespace MimeKit {
 					filtered.Flush (cancellationToken);
 				}
 
-				var cancellable = stream as ICancellableStream;
-
-				if (cancellable != null) {
+				if (stream is ICancellableStream cancellable) {
 					cancellable.Write (options.NewLineBytes, 0, options.NewLineBytes.Length, cancellationToken);
 				} else {
 					cancellationToken.ThrowIfCancellationRequested ();
@@ -1154,12 +1341,12 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public async Task WriteToAsync (FormatOptions options, Stream stream, bool headersOnly, CancellationToken cancellationToken = default (CancellationToken))
+		public async Task WriteToAsync (FormatOptions options, Stream stream, bool headersOnly, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (stream == null)
+			if (stream is null)
 				throw new ArgumentNullException (nameof (stream));
 
 			if (compliance == RfcComplianceMode.Strict && Body != null && Body.Headers.Count > 0 && !Headers.Contains (HeaderId.MimeVersion))
@@ -1221,7 +1408,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public void WriteTo (FormatOptions options, Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public void WriteTo (FormatOptions options, Stream stream, CancellationToken cancellationToken = default)
 		{
 			WriteTo (options, stream, false, cancellationToken);
 		}
@@ -1247,7 +1434,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public Task WriteToAsync (FormatOptions options, Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public Task WriteToAsync (FormatOptions options, Stream stream, CancellationToken cancellationToken = default)
 		{
 			return WriteToAsync (options, stream, false, cancellationToken);
 		}
@@ -1270,7 +1457,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public void WriteTo (Stream stream, bool headersOnly, CancellationToken cancellationToken = default (CancellationToken))
+		public void WriteTo (Stream stream, bool headersOnly, CancellationToken cancellationToken = default)
 		{
 			WriteTo (FormatOptions.Default, stream, headersOnly, cancellationToken);
 		}
@@ -1294,7 +1481,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public Task WriteToAsync (Stream stream, bool headersOnly, CancellationToken cancellationToken = default (CancellationToken))
+		public Task WriteToAsync (Stream stream, bool headersOnly, CancellationToken cancellationToken = default)
 		{
 			return WriteToAsync (FormatOptions.Default, stream, headersOnly, cancellationToken);
 		}
@@ -1316,7 +1503,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public void WriteTo (Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public void WriteTo (Stream stream, CancellationToken cancellationToken = default)
 		{
 			WriteTo (FormatOptions.Default, stream, false, cancellationToken);
 		}
@@ -1339,7 +1526,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public Task WriteToAsync (Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public Task WriteToAsync (Stream stream, CancellationToken cancellationToken = default)
 		{
 			return WriteToAsync (FormatOptions.Default, stream, false, cancellationToken);
 		}
@@ -1377,12 +1564,12 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public void WriteTo (FormatOptions options, string fileName, CancellationToken cancellationToken = default (CancellationToken))
+		public void WriteTo (FormatOptions options, string fileName, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (fileName == null)
+			if (fileName is null)
 				throw new ArgumentNullException (nameof (fileName));
 
 			using (var stream = File.Open (fileName, FileMode.Create, FileAccess.Write)) {
@@ -1425,12 +1612,12 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public async Task WriteToAsync (FormatOptions options, string fileName, CancellationToken cancellationToken = default (CancellationToken))
+		public async Task WriteToAsync (FormatOptions options, string fileName, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (fileName == null)
+			if (fileName is null)
 				throw new ArgumentNullException (nameof (fileName));
 
 			using (var stream = File.Open (fileName, FileMode.Create, FileAccess.Write)) {
@@ -1469,7 +1656,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public void WriteTo (string fileName, CancellationToken cancellationToken = default (CancellationToken))
+		public void WriteTo (string fileName, CancellationToken cancellationToken = default)
 		{
 			WriteTo (FormatOptions.Default, fileName, cancellationToken);
 		}
@@ -1505,7 +1692,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public Task WriteToAsync (string fileName, CancellationToken cancellationToken = default (CancellationToken))
+		public Task WriteToAsync (string fileName, CancellationToken cancellationToken = default)
 		{
 			return WriteToAsync (FormatOptions.Default, fileName, cancellationToken);
 		}
@@ -1521,53 +1708,12 @@ namespace MimeKit {
 			if (Sender != null)
 				return Sender;
 
-			if (From.Count > 0)
-				return From.Mailboxes.FirstOrDefault ();
-
-			return null;
+			return From.Mailboxes.FirstOrDefault ();
 		}
 
-		IList<MailboxAddress> GetMessageRecipients (bool includeSenders)
+		IList<MailboxAddress> GetEncryptionRecipients ()
 		{
-			var recipients = new HashSet<MailboxAddress> ();
-
-			if (ResentSender != null || ResentFrom.Count > 0) {
-				if (includeSenders) {
-					if (ResentSender != null)
-						recipients.Add (ResentSender);
-
-					if (ResentFrom.Count > 0) {
-						foreach (var mailbox in ResentFrom.Mailboxes)
-							recipients.Add (mailbox);
-					}
-				}
-
-				foreach (var mailbox in ResentTo.Mailboxes)
-					recipients.Add (mailbox);
-				foreach (var mailbox in ResentCc.Mailboxes)
-					recipients.Add (mailbox);
-				foreach (var mailbox in ResentBcc.Mailboxes)
-					recipients.Add (mailbox);
-			} else {
-				if (includeSenders) {
-					if (Sender != null)
-						recipients.Add (Sender);
-
-					if (From.Count > 0) {
-						foreach (var mailbox in From.Mailboxes)
-							recipients.Add (mailbox);
-					}
-				}
-
-				foreach (var mailbox in To.Mailboxes)
-					recipients.Add (mailbox);
-				foreach (var mailbox in Cc.Mailboxes)
-					recipients.Add (mailbox);
-				foreach (var mailbox in Bcc.Mailboxes)
-					recipients.Add (mailbox);
-			}
-
-			return recipients.ToList ();
+			return GetMailboxes (true, true);
 		}
 
 #if ENABLE_CRYPTO
@@ -1605,307 +1751,6 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Digitally sign the message using a DomainKeys Identified Mail (DKIM) signature.
-		/// </summary>
-		/// <remarks>
-		/// Digitally signs the message using a DomainKeys Identified Mail (DKIM) signature.
-		/// </remarks>
-		/// <example>
-		/// <code language="c#" source="Examples\DkimExamples.cs" region="DkimSign" />
-		/// </example>
-		/// <param name="options">The formatting options.</param>
-		/// <param name="signer">The DKIM signer.</param>
-		/// <param name="headers">The list of header fields to sign.</param>
-		/// <param name="headerCanonicalizationAlgorithm">The header canonicalization algorithm.</param>
-		/// <param name="bodyCanonicalizationAlgorithm">The body canonicalization algorithm.</param>
-		/// <exception cref="System.ArgumentNullException">
-		/// <para><paramref name="options"/> is <c>null</c>.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="signer"/> is <c>null</c>.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="headers"/> is <c>null</c>.</para>
-		/// </exception>
-		/// <exception cref="System.ArgumentException">
-		/// <para><paramref name="headers"/> does not contain the 'From' header.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="headers"/> contains one or more of the following headers: Return-Path,
-		/// Received, Comments, Keywords, Bcc, Resent-Bcc, or DKIM-Signature.</para>
-		/// </exception>
-		[Obsolete ("Use DkimSigner.Sign() instead.")]
-		public void Sign (FormatOptions options, DkimSigner signer, IList<string> headers, DkimCanonicalizationAlgorithm headerCanonicalizationAlgorithm = DkimCanonicalizationAlgorithm.Simple, DkimCanonicalizationAlgorithm bodyCanonicalizationAlgorithm = DkimCanonicalizationAlgorithm.Simple)
-		{
-			if (options == null)
-				throw new ArgumentNullException (nameof (options));
-
-			if (signer == null)
-				throw new ArgumentNullException (nameof (signer));
-
-			signer.HeaderCanonicalizationAlgorithm = headerCanonicalizationAlgorithm;
-			signer.BodyCanonicalizationAlgorithm = bodyCanonicalizationAlgorithm;
-
-			signer.Sign (options, this, headers);
-		}
-
-		/// <summary>
-		/// Digitally sign the message using a DomainKeys Identified Mail (DKIM) signature.
-		/// </summary>
-		/// <remarks>
-		/// Digitally signs the message using a DomainKeys Identified Mail (DKIM) signature.
-		/// </remarks>
-		/// <example>
-		/// <code language="c#" source="Examples\DkimExamples.cs" region="DkimSign" />
-		/// </example>
-		/// <param name="signer">The DKIM signer.</param>
-		/// <param name="headers">The headers to sign.</param>
-		/// <param name="headerCanonicalizationAlgorithm">The header canonicalization algorithm.</param>
-		/// <param name="bodyCanonicalizationAlgorithm">The body canonicalization algorithm.</param>
-		/// <exception cref="System.ArgumentNullException">
-		/// <para><paramref name="signer"/> is <c>null</c>.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="headers"/> is <c>null</c>.</para>
-		/// </exception>
-		/// <exception cref="System.ArgumentException">
-		/// <para><paramref name="headers"/> does not contain the 'From' header.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="headers"/> contains one or more of the following headers: Return-Path,
-		/// Received, Comments, Keywords, Bcc, Resent-Bcc, or DKIM-Signature.</para>
-		/// </exception>
-		[Obsolete ("Use DkimSigner.Sign() instead.")]
-		public void Sign (DkimSigner signer, IList<string> headers, DkimCanonicalizationAlgorithm headerCanonicalizationAlgorithm = DkimCanonicalizationAlgorithm.Simple, DkimCanonicalizationAlgorithm bodyCanonicalizationAlgorithm = DkimCanonicalizationAlgorithm.Simple)
-		{
-			Sign (FormatOptions.Default, signer, headers, headerCanonicalizationAlgorithm, bodyCanonicalizationAlgorithm);
-		}
-
-		/// <summary>
-		/// Digitally sign the message using a DomainKeys Identified Mail (DKIM) signature.
-		/// </summary>
-		/// <remarks>
-		/// Digitally signs the message using a DomainKeys Identified Mail (DKIM) signature.
-		/// </remarks>
-		/// <example>
-		/// <code language="c#" source="Examples\DkimExamples.cs" region="DkimSign" />
-		/// </example>
-		/// <param name="options">The formatting options.</param>
-		/// <param name="signer">The DKIM signer.</param>
-		/// <param name="headers">The list of header fields to sign.</param>
-		/// <param name="headerCanonicalizationAlgorithm">The header canonicalization algorithm.</param>
-		/// <param name="bodyCanonicalizationAlgorithm">The body canonicalization algorithm.</param>
-		/// <exception cref="System.ArgumentNullException">
-		/// <para><paramref name="options"/> is <c>null</c>.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="signer"/> is <c>null</c>.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="headers"/> is <c>null</c>.</para>
-		/// </exception>
-		/// <exception cref="System.ArgumentException">
-		/// <para><paramref name="headers"/> does not contain the 'From' header.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="headers"/> contains one or more of the following headers: Return-Path,
-		/// Received, Comments, Keywords, Bcc, Resent-Bcc, or DKIM-Signature.</para>
-		/// </exception>
-		[Obsolete ("Use DkimSigner.Sign() instead.")]
-		public void Sign (FormatOptions options, DkimSigner signer, IList<HeaderId> headers, DkimCanonicalizationAlgorithm headerCanonicalizationAlgorithm = DkimCanonicalizationAlgorithm.Simple, DkimCanonicalizationAlgorithm bodyCanonicalizationAlgorithm = DkimCanonicalizationAlgorithm.Simple)
-		{
-			if (options == null)
-				throw new ArgumentNullException (nameof (options));
-
-			if (signer == null)
-				throw new ArgumentNullException (nameof (signer));
-
-			signer.HeaderCanonicalizationAlgorithm = headerCanonicalizationAlgorithm;
-			signer.BodyCanonicalizationAlgorithm = bodyCanonicalizationAlgorithm;
-
-			signer.Sign (options, this, headers);
-		}
-
-		/// <summary>
-		/// Digitally sign the message using a DomainKeys Identified Mail (DKIM) signature.
-		/// </summary>
-		/// <remarks>
-		/// Digitally signs the message using a DomainKeys Identified Mail (DKIM) signature.
-		/// </remarks>
-		/// <example>
-		/// <code language="c#" source="Examples\DkimExamples.cs" region="DkimSign" />
-		/// </example>
-		/// <param name="signer">The DKIM signer.</param>
-		/// <param name="headers">The headers to sign.</param>
-		/// <param name="headerCanonicalizationAlgorithm">The header canonicalization algorithm.</param>
-		/// <param name="bodyCanonicalizationAlgorithm">The body canonicalization algorithm.</param>
-		/// <exception cref="System.ArgumentNullException">
-		/// <para><paramref name="signer"/> is <c>null</c>.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="headers"/> is <c>null</c>.</para>
-		/// </exception>
-		/// <exception cref="System.ArgumentException">
-		/// <para><paramref name="headers"/> does not contain the 'From' header.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="headers"/> contains one or more of the following headers: Return-Path,
-		/// Received, Comments, Keywords, Bcc, Resent-Bcc, or DKIM-Signature.</para>
-		/// </exception>
-		[Obsolete ("Use DkimSigner.Sign() instead.")]
-		public void Sign (DkimSigner signer, IList<HeaderId> headers, DkimCanonicalizationAlgorithm headerCanonicalizationAlgorithm = DkimCanonicalizationAlgorithm.Simple, DkimCanonicalizationAlgorithm bodyCanonicalizationAlgorithm = DkimCanonicalizationAlgorithm.Simple)
-		{
-			Sign (FormatOptions.Default, signer, headers, headerCanonicalizationAlgorithm, bodyCanonicalizationAlgorithm);
-		}
-
-		Task<bool> DkimVerifyAsync (FormatOptions options, Header dkimSignature, IDkimPublicKeyLocator publicKeyLocator, bool doAsync, CancellationToken cancellationToken)
-		{
-			if (options == null)
-				throw new ArgumentNullException (nameof (options));
-
-			if (dkimSignature == null)
-				throw new ArgumentNullException (nameof (dkimSignature));
-
-			if (dkimSignature.Id != HeaderId.DkimSignature)
-				throw new ArgumentException ("The signature parameter MUST be a DKIM-Signature header.", nameof (dkimSignature));
-
-			var verifier = new DkimVerifier (publicKeyLocator);
-
-			if (doAsync)
-				return verifier.VerifyAsync (options, this, dkimSignature, cancellationToken);
-
-			return Task.FromResult (verifier.Verify (options, this, dkimSignature, cancellationToken));
-		}
-
-		/// <summary>
-		/// Verify the specified DKIM-Signature header.
-		/// </summary>
-		/// <remarks>
-		/// Verifies the specified DKIM-Signature header.
-		/// </remarks>
-		/// <example>
-		/// <code language="c#" source="Examples\DkimVerifierExample.cs" />
-		/// </example>
-		/// <returns><c>true</c> if the DKIM-Signature is valid; otherwise, <c>false</c>.</returns>
-		/// <param name="options">The formatting options.</param>
-		/// <param name="dkimSignature">The DKIM-Signature header.</param>
-		/// <param name="publicKeyLocator">The public key locator service.</param>
-		/// <param name="cancellationToken">The cancellation token.</param>
-		/// <exception cref="System.ArgumentNullException">
-		/// <para><paramref name="options"/> is <c>null</c>.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="dkimSignature"/> is <c>null</c>.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="publicKeyLocator"/> is <c>null</c>.</para>
-		/// </exception>
-		/// <exception cref="System.ArgumentException">
-		/// <paramref name="dkimSignature"/> is not a DKIM-Signature header.
-		/// </exception>
-		/// <exception cref="System.FormatException">
-		/// The DKIM-Signature header value is malformed.
-		/// </exception>
-		/// <exception cref="System.OperationCanceledException">
-		/// The operation was canceled via the cancellation token.
-		/// </exception>
-		[Obsolete ("Use the DkimVerifier class instead.")]
-		public bool Verify (FormatOptions options, Header dkimSignature, IDkimPublicKeyLocator publicKeyLocator, CancellationToken cancellationToken = default (CancellationToken))
-		{
-			return DkimVerifyAsync (options, dkimSignature, publicKeyLocator, false, cancellationToken).GetAwaiter ().GetResult ();
-		}
-
-		/// <summary>
-		/// Asynchronously verify the specified DKIM-Signature header.
-		/// </summary>
-		/// <remarks>
-		/// Verifies the specified DKIM-Signature header.
-		/// </remarks>
-		/// <example>
-		/// <code language="c#" source="Examples\DkimVerifierExample.cs" />
-		/// </example>
-		/// <returns><c>true</c> if the DKIM-Signature is valid; otherwise, <c>false</c>.</returns>
-		/// <param name="options">The formatting options.</param>
-		/// <param name="dkimSignature">The DKIM-Signature header.</param>
-		/// <param name="publicKeyLocator">The public key locator service.</param>
-		/// <param name="cancellationToken">The cancellation token.</param>
-		/// <exception cref="System.ArgumentNullException">
-		/// <para><paramref name="options"/> is <c>null</c>.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="dkimSignature"/> is <c>null</c>.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="publicKeyLocator"/> is <c>null</c>.</para>
-		/// </exception>
-		/// <exception cref="System.ArgumentException">
-		/// <paramref name="dkimSignature"/> is not a DKIM-Signature header.
-		/// </exception>
-		/// <exception cref="System.FormatException">
-		/// The DKIM-Signature header value is malformed.
-		/// </exception>
-		/// <exception cref="System.OperationCanceledException">
-		/// The operation was canceled via the cancellation token.
-		/// </exception>
-		[Obsolete ("Use the DkimVerifier class instead.")]
-		public Task<bool> VerifyAsync (FormatOptions options, Header dkimSignature, IDkimPublicKeyLocator publicKeyLocator, CancellationToken cancellationToken = default (CancellationToken))
-		{
-			return DkimVerifyAsync (options, dkimSignature, publicKeyLocator, true, cancellationToken);
-		}
-
-		/// <summary>
-		/// Verify the specified DKIM-Signature header.
-		/// </summary>
-		/// <remarks>
-		/// Verifies the specified DKIM-Signature header.
-		/// </remarks>
-		/// <example>
-		/// <code language="c#" source="Examples\DkimVerifierExample.cs" />
-		/// </example>
-		/// <returns><c>true</c> if the DKIM-Signature is valid; otherwise, <c>false</c>.</returns>
-		/// <param name="dkimSignature">The DKIM-Signature header.</param>
-		/// <param name="publicKeyLocator">The public key locator service.</param>
-		/// <param name="cancellationToken">The cancellation token.</param>
-		/// <exception cref="System.ArgumentNullException">
-		/// <para><paramref name="dkimSignature"/> is <c>null</c>.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="publicKeyLocator"/> is <c>null</c>.</para>
-		/// </exception>
-		/// <exception cref="System.ArgumentException">
-		/// <paramref name="dkimSignature"/> is not a DKIM-Signature header.
-		/// </exception>
-		/// <exception cref="System.FormatException">
-		/// The DKIM-Signature header value is malformed.
-		/// </exception>
-		/// <exception cref="System.OperationCanceledException">
-		/// The operation was canceled via the cancellation token.
-		/// </exception>
-		[Obsolete ("Use the DkimVerifier class instead.")]
-		public bool Verify (Header dkimSignature, IDkimPublicKeyLocator publicKeyLocator, CancellationToken cancellationToken = default (CancellationToken))
-		{
-			return Verify (FormatOptions.Default, dkimSignature, publicKeyLocator, cancellationToken);
-		}
-
-		/// <summary>
-		/// Asynchronously verify the specified DKIM-Signature header.
-		/// </summary>
-		/// <remarks>
-		/// Verifies the specified DKIM-Signature header.
-		/// </remarks>
-		/// <example>
-		/// <code language="c#" source="Examples\DkimVerifierExample.cs" />
-		/// </example>
-		/// <returns><c>true</c> if the DKIM-Signature is valid; otherwise, <c>false</c>.</returns>
-		/// <param name="dkimSignature">The DKIM-Signature header.</param>
-		/// <param name="publicKeyLocator">The public key locator service.</param>
-		/// <param name="cancellationToken">The cancellation token.</param>
-		/// <exception cref="System.ArgumentNullException">
-		/// <para><paramref name="dkimSignature"/> is <c>null</c>.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="publicKeyLocator"/> is <c>null</c>.</para>
-		/// </exception>
-		/// <exception cref="System.ArgumentException">
-		/// <paramref name="dkimSignature"/> is not a DKIM-Signature header.
-		/// </exception>
-		/// <exception cref="System.FormatException">
-		/// The DKIM-Signature header value is malformed.
-		/// </exception>
-		/// <exception cref="System.OperationCanceledException">
-		/// The operation was canceled via the cancellation token.
-		/// </exception>
-		[Obsolete ("Use the DkimVerifier class instead.")]
-		public Task<bool> VerifyAsync (Header dkimSignature, IDkimPublicKeyLocator publicKeyLocator, CancellationToken cancellationToken = default (CancellationToken))
-		{
-			return VerifyAsync (FormatOptions.Default, dkimSignature, publicKeyLocator, cancellationToken);
-		}
-
-		/// <summary>
 		/// Sign the message using the specified cryptography context and digest algorithm.
 		/// </summary>
 		/// <remarks>
@@ -1916,6 +1761,7 @@ namespace MimeKit {
 		/// </remarks>
 		/// <param name="ctx">The cryptography context.</param>
 		/// <param name="digestAlgo">The digest algorithm.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="ctx"/> is <c>null</c>.
 		/// </exception>
@@ -1930,25 +1776,73 @@ namespace MimeKit {
 		/// <exception cref="System.NotSupportedException">
 		/// The <paramref name="digestAlgo"/> is not supported.
 		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
 		/// <exception cref="CertificateNotFoundException">
 		/// A signing certificate could not be found for the sender.
 		/// </exception>
 		/// <exception cref="PrivateKeyNotFoundException">
 		/// The private key could not be found for the sender.
 		/// </exception>
-		public void Sign (CryptographyContext ctx, DigestAlgorithm digestAlgo)
+		public void Sign (CryptographyContext ctx, DigestAlgorithm digestAlgo, CancellationToken cancellationToken = default)
 		{
-			if (ctx == null)
+			if (ctx is null)
 				throw new ArgumentNullException (nameof (ctx));
 
-			if (Body == null)
+			if (Body is null)
 				throw new InvalidOperationException ("No message body has been set.");
 
-			var signer = GetMessageSigner ();
-			if (signer == null)
-				throw new InvalidOperationException ("The sender has not been set.");
+			var signer = GetMessageSigner () ?? throw new InvalidOperationException ("The sender has not been set.");
+			Body = MultipartSigned.Create (ctx, signer, digestAlgo, Body, cancellationToken);
+		}
 
-			Body = MultipartSigned.Create (ctx, signer, digestAlgo, Body);
+		/// <summary>
+		/// Asynchronously sign the message using the specified cryptography context and digest algorithm.
+		/// </summary>
+		/// <remarks>
+		/// If either of the Resent-Sender or Resent-From headers are set, then the message
+		/// will be signed using the Resent-Sender (or first mailbox in the Resent-From)
+		/// address as the signer address, otherwise the Sender or From address will be
+		/// used instead.
+		/// </remarks>
+		/// <returns>An asynchronous task context.</returns>
+		/// <param name="ctx">The cryptography context.</param>
+		/// <param name="digestAlgo">The digest algorithm.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="ctx"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.InvalidOperationException">
+		/// <para>The <see cref="Body"/> has not been set.</para>
+		/// <para>-or-</para>
+		/// <para>A sender has not been specified.</para>
+		/// </exception>
+		/// <exception cref="System.ArgumentOutOfRangeException">
+		/// The <paramref name="digestAlgo"/> was out of range.
+		/// </exception>
+		/// <exception cref="System.NotSupportedException">
+		/// The <paramref name="digestAlgo"/> is not supported.
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		/// <exception cref="CertificateNotFoundException">
+		/// A signing certificate could not be found for the sender.
+		/// </exception>
+		/// <exception cref="PrivateKeyNotFoundException">
+		/// The private key could not be found for the sender.
+		/// </exception>
+		public async Task SignAsync (CryptographyContext ctx, DigestAlgorithm digestAlgo, CancellationToken cancellationToken = default)
+		{
+			if (ctx is null)
+				throw new ArgumentNullException (nameof (ctx));
+
+			if (Body is null)
+				throw new InvalidOperationException ("No message body has been set.");
+
+			var signer = GetMessageSigner () ?? throw new InvalidOperationException ("The sender has not been set.");
+			Body = await MultipartSigned.CreateAsync (ctx, signer, digestAlgo, Body, cancellationToken).ConfigureAwait (false);
 		}
 
 		/// <summary>
@@ -1961,6 +1855,7 @@ namespace MimeKit {
 		/// used instead.
 		/// </remarks>
 		/// <param name="ctx">The cryptography context.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="ctx"/> is <c>null</c>.
 		/// </exception>
@@ -1969,15 +1864,52 @@ namespace MimeKit {
 		/// <para>-or-</para>
 		/// <para>A sender has not been specified.</para>
 		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
 		/// <exception cref="CertificateNotFoundException">
 		/// A signing certificate could not be found for the sender.
 		/// </exception>
 		/// <exception cref="PrivateKeyNotFoundException">
 		/// The private key could not be found for the sender.
 		/// </exception>
-		public void Sign (CryptographyContext ctx)
+		public void Sign (CryptographyContext ctx, CancellationToken cancellationToken = default)
 		{
-			Sign (ctx, DigestAlgorithm.Sha1);
+			Sign (ctx, DigestAlgorithm.Sha1, cancellationToken);
+		}
+
+		/// <summary>
+		/// Asynchronously sign the message using the specified cryptography context and the SHA-1 digest algorithm.
+		/// </summary>
+		/// <remarks>
+		/// If either of the Resent-Sender or Resent-From headers are set, then the message
+		/// will be signed using the Resent-Sender (or first mailbox in the Resent-From)
+		/// address as the signer address, otherwise the Sender or From address will be
+		/// used instead.
+		/// </remarks>
+		/// <returns>An asynchronous task context.</returns>
+		/// <param name="ctx">The cryptography context.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="ctx"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.InvalidOperationException">
+		/// <para>The <see cref="Body"/> has not been set.</para>
+		/// <para>-or-</para>
+		/// <para>A sender has not been specified.</para>
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		/// <exception cref="CertificateNotFoundException">
+		/// A signing certificate could not be found for the sender.
+		/// </exception>
+		/// <exception cref="PrivateKeyNotFoundException">
+		/// The private key could not be found for the sender.
+		/// </exception>
+		public Task SignAsync (CryptographyContext ctx, CancellationToken cancellationToken = default)
+		{
+			return SignAsync (ctx, DigestAlgorithm.Sha1, cancellationToken);
 		}
 
 		/// <summary>
@@ -1992,6 +1924,7 @@ namespace MimeKit {
 		/// the standard address headers (Sender, From, To, Cc, and Bcc).
 		/// </remarks>
 		/// <param name="ctx">The cryptography context.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="ctx"/> is <c>null</c>.
 		/// </exception>
@@ -2003,28 +1936,86 @@ namespace MimeKit {
 		/// <para>-or-</para>
 		/// <para>No recipients have been specified.</para>
 		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
 		/// <exception cref="CertificateNotFoundException">
 		/// A certificate could not be found for one or more of the recipients.
 		/// </exception>
 		/// <exception cref="PublicKeyNotFoundException">
 		/// The public key could not be found for one or more of the recipients.
 		/// </exception>
-		public void Encrypt (CryptographyContext ctx)
+		public void Encrypt (CryptographyContext ctx, CancellationToken cancellationToken = default)
 		{
-			if (ctx == null)
+			if (ctx is null)
 				throw new ArgumentNullException (nameof (ctx));
 
-			if (Body == null)
+			if (Body is null)
 				throw new InvalidOperationException ("No message body has been set.");
 
-			var recipients = GetMessageRecipients (true);
+			var recipients = GetEncryptionRecipients ();
 			if (recipients.Count == 0)
 				throw new InvalidOperationException ("No recipients have been set.");
 
-			if (ctx is SecureMimeContext) {
-				Body = ApplicationPkcs7Mime.Encrypt ((SecureMimeContext) ctx, recipients, Body);
-			} else if (ctx is OpenPgpContext) {
-				Body = MultipartEncrypted.Encrypt ((OpenPgpContext) ctx, recipients, Body);
+			if (ctx is SecureMimeContext smime) {
+				Body = ApplicationPkcs7Mime.Encrypt (smime, recipients, Body, cancellationToken);
+			} else if (ctx is OpenPgpContext pgp) {
+				Body = MultipartEncrypted.Encrypt (pgp, recipients, Body, cancellationToken);
+			} else {
+				throw new ArgumentException ("Unknown type of cryptography context.", nameof (ctx));
+			}
+		}
+
+		/// <summary>
+		/// Asynchronously encrypt the message to the sender and all of the recipients
+		/// using the specified cryptography context.
+		/// </summary>
+		/// <remarks>
+		/// If either of the Resent-Sender or Resent-From headers are set, then the message
+		/// will be encrypted to all of the addresses specified in the Resent headers
+		/// (Resent-Sender, Resent-From, Resent-To, Resent-Cc, and Resent-Bcc),
+		/// otherwise the message will be encrypted to all of the addresses specified in
+		/// the standard address headers (Sender, From, To, Cc, and Bcc).
+		/// </remarks>
+		/// <returns>An asynchronous task context.</returns>
+		/// <param name="ctx">The cryptography context.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="ctx"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.ArgumentException">
+		/// An unknown type of cryptography context was used.
+		/// </exception>
+		/// <exception cref="System.InvalidOperationException">
+		/// <para>The <see cref="Body"/> has not been set.</para>
+		/// <para>-or-</para>
+		/// <para>No recipients have been specified.</para>
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		/// <exception cref="CertificateNotFoundException">
+		/// A certificate could not be found for one or more of the recipients.
+		/// </exception>
+		/// <exception cref="PublicKeyNotFoundException">
+		/// The public key could not be found for one or more of the recipients.
+		/// </exception>
+		public async Task EncryptAsync (CryptographyContext ctx, CancellationToken cancellationToken = default)
+		{
+			if (ctx is null)
+				throw new ArgumentNullException (nameof (ctx));
+
+			if (Body is null)
+				throw new InvalidOperationException ("No message body has been set.");
+
+			var recipients = GetEncryptionRecipients ();
+			if (recipients.Count == 0)
+				throw new InvalidOperationException ("No recipients have been set.");
+
+			if (ctx is SecureMimeContext smime) {
+				Body = await ApplicationPkcs7Mime.EncryptAsync (smime, recipients, Body, cancellationToken).ConfigureAwait (false);
+			} else if (ctx is OpenPgpContext pgp) {
+				Body = await MultipartEncrypted.EncryptAsync (pgp, recipients, Body, cancellationToken).ConfigureAwait (false);
 			} else {
 				throw new ArgumentException ("Unknown type of cryptography context.", nameof (ctx));
 			}
@@ -2047,6 +2038,7 @@ namespace MimeKit {
 		/// </remarks>
 		/// <param name="ctx">The cryptography context.</param>
 		/// <param name="digestAlgo">The digest algorithm.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="ctx"/> is <c>null</c>.
 		/// </exception>
@@ -2066,6 +2058,9 @@ namespace MimeKit {
 		/// <exception cref="System.NotSupportedException">
 		/// The <paramref name="digestAlgo"/> is not supported.
 		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
 		/// <exception cref="CertificateNotFoundException">
 		/// A certificate could not be found for the signer or one or more of the recipients.
 		/// </exception>
@@ -2075,24 +2070,91 @@ namespace MimeKit {
 		/// <exception cref="PublicKeyNotFoundException">
 		/// The public key could not be found for one or more of the recipients.
 		/// </exception>
-		public void SignAndEncrypt (CryptographyContext ctx, DigestAlgorithm digestAlgo)
+		public void SignAndEncrypt (CryptographyContext ctx, DigestAlgorithm digestAlgo, CancellationToken cancellationToken = default)
 		{
-			if (ctx == null)
+			if (ctx is null)
 				throw new ArgumentNullException (nameof (ctx));
 
-			if (Body == null)
+			if (Body is null)
 				throw new InvalidOperationException ("No message body has been set.");
 
-			var signer = GetMessageSigner ();
-			if (signer == null)
-				throw new InvalidOperationException ("The sender has not been set.");
+			var signer = GetMessageSigner () ?? throw new InvalidOperationException ("The sender has not been set.");
+			var recipients = GetEncryptionRecipients ();
 
-			var recipients = GetMessageRecipients (true);
+			if (ctx is SecureMimeContext smime) {
+				Body = ApplicationPkcs7Mime.SignAndEncrypt (smime, signer, digestAlgo, recipients, Body, cancellationToken);
+			} else if (ctx is OpenPgpContext pgp) {
+				Body = MultipartEncrypted.SignAndEncrypt (pgp, signer, digestAlgo, recipients, Body, cancellationToken);
+			} else {
+				throw new ArgumentException ("Unknown type of cryptography context.", nameof (ctx));
+			}
+		}
 
-			if (ctx is SecureMimeContext) {
-				Body = ApplicationPkcs7Mime.SignAndEncrypt ((SecureMimeContext) ctx, signer, digestAlgo, recipients, Body);
-			} else if (ctx is OpenPgpContext) {
-				Body = MultipartEncrypted.SignAndEncrypt ((OpenPgpContext) ctx, signer, digestAlgo, recipients, Body);
+		/// <summary>
+		/// Asynchronously sign and encrypt the message to the sender and all of the recipients using
+		/// the specified cryptography context and the specified digest algorithm.
+		/// </summary>
+		/// <remarks>
+		/// <para>If either of the Resent-Sender or Resent-From headers are set, then the message
+		/// will be signed using the Resent-Sender (or first mailbox in the Resent-From)
+		/// address as the signer address, otherwise the Sender or From address will be
+		/// used instead.</para>
+		/// <para>Likewise, if either of the Resent-Sender or Resent-From headers are set, then the
+		/// message will be encrypted to all of the addresses specified in the Resent headers
+		/// (Resent-Sender, Resent-From, Resent-To, Resent-Cc, and Resent-Bcc),
+		/// otherwise the message will be encrypted to all of the addresses specified in
+		/// the standard address headers (Sender, From, To, Cc, and Bcc).</para>
+		/// </remarks>
+		/// <returns>An asynchronous task context.</returns>
+		/// <param name="ctx">The cryptography context.</param>
+		/// <param name="digestAlgo">The digest algorithm.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="ctx"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.ArgumentException">
+		/// An unknown type of cryptography context was used.
+		/// </exception>
+		/// <exception cref="System.ArgumentOutOfRangeException">
+		/// The <paramref name="digestAlgo"/> was out of range.
+		/// </exception>
+		/// <exception cref="System.InvalidOperationException">
+		/// <para>The <see cref="Body"/> has not been set.</para>
+		/// <para>-or-</para>
+		/// <para>No sender has been specified.</para>
+		/// <para>-or-</para>
+		/// <para>No recipients have been specified.</para>
+		/// </exception>
+		/// <exception cref="System.NotSupportedException">
+		/// The <paramref name="digestAlgo"/> is not supported.
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		/// <exception cref="CertificateNotFoundException">
+		/// A certificate could not be found for the signer or one or more of the recipients.
+		/// </exception>
+		/// <exception cref="PrivateKeyNotFoundException">
+		/// The private key could not be found for the sender.
+		/// </exception>
+		/// <exception cref="PublicKeyNotFoundException">
+		/// The public key could not be found for one or more of the recipients.
+		/// </exception>
+		public async Task SignAndEncryptAsync (CryptographyContext ctx, DigestAlgorithm digestAlgo, CancellationToken cancellationToken = default)
+		{
+			if (ctx is null)
+				throw new ArgumentNullException (nameof (ctx));
+
+			if (Body is null)
+				throw new InvalidOperationException ("No message body has been set.");
+
+			var signer = GetMessageSigner () ?? throw new InvalidOperationException ("The sender has not been set.");
+			var recipients = GetEncryptionRecipients ();
+
+			if (ctx is SecureMimeContext smime) {
+				Body = await ApplicationPkcs7Mime.SignAndEncryptAsync (smime, signer, digestAlgo, recipients, Body, cancellationToken).ConfigureAwait (false);
+			} else if (ctx is OpenPgpContext pgp) {
+				Body = await MultipartEncrypted.SignAndEncryptAsync (pgp, signer, digestAlgo, recipients, Body, cancellationToken).ConfigureAwait (false);
 			} else {
 				throw new ArgumentException ("Unknown type of cryptography context.", nameof (ctx));
 			}
@@ -2114,6 +2176,7 @@ namespace MimeKit {
 		/// the standard address headers (Sender, From, To, Cc, and Bcc).</para>
 		/// </remarks>
 		/// <param name="ctx">The cryptography context.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="ctx"/> is <c>null</c>.
 		/// </exception>
@@ -2127,6 +2190,9 @@ namespace MimeKit {
 		/// <para>-or-</para>
 		/// <para>No recipients have been specified.</para>
 		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
 		/// <exception cref="CertificateNotFoundException">
 		/// A certificate could not be found for the signer or one or more of the recipients.
 		/// </exception>
@@ -2136,9 +2202,57 @@ namespace MimeKit {
 		/// <exception cref="PublicKeyNotFoundException">
 		/// The public key could not be found for one or more of the recipients.
 		/// </exception>
-		public void SignAndEncrypt (CryptographyContext ctx)
+		public void SignAndEncrypt (CryptographyContext ctx, CancellationToken cancellationToken = default)
 		{
-			SignAndEncrypt (ctx, DigestAlgorithm.Sha1);
+			SignAndEncrypt (ctx, DigestAlgorithm.Sha1, cancellationToken);
+		}
+
+		/// <summary>
+		/// Asynchronously sign and encrypt the message to the sender and all of the recipients using
+		/// the specified cryptography context and the SHA-1 digest algorithm.
+		/// </summary>
+		/// <remarks>
+		/// <para>If either of the Resent-Sender or Resent-From headers are set, then the message
+		/// will be signed using the Resent-Sender (or first mailbox in the Resent-From)
+		/// address as the signer address, otherwise the Sender or From address will be
+		/// used instead.</para>
+		/// <para>Likewise, if either of the Resent-Sender or Resent-From headers are set, then the
+		/// message will be encrypted to all of the addresses specified in the Resent headers
+		/// (Resent-Sender, Resent-From, Resent-To, Resent-Cc, and Resent-Bcc),
+		/// otherwise the message will be encrypted to all of the addresses specified in
+		/// the standard address headers (Sender, From, To, Cc, and Bcc).</para>
+		/// </remarks>
+		/// <returns>An asynchronous task context.</returns>
+		/// <param name="ctx">The cryptography context.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="ctx"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.ArgumentException">
+		/// An unknown type of cryptography context was used.
+		/// </exception>
+		/// <exception cref="System.InvalidOperationException">
+		/// <para>The <see cref="Body"/> has not been set.</para>
+		/// <para>-or-</para>
+		/// <para>No sender has been specified.</para>
+		/// <para>-or-</para>
+		/// <para>No recipients have been specified.</para>
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		/// <exception cref="CertificateNotFoundException">
+		/// A certificate could not be found for the signer or one or more of the recipients.
+		/// </exception>
+		/// <exception cref="PrivateKeyNotFoundException">
+		/// The private key could not be found for the sender.
+		/// </exception>
+		/// <exception cref="PublicKeyNotFoundException">
+		/// The public key could not be found for one or more of the recipients.
+		/// </exception>
+		public Task SignAndEncryptAsync (CryptographyContext ctx, CancellationToken cancellationToken = default)
+		{
+			return SignAndEncryptAsync (ctx, DigestAlgorithm.Sha1, cancellationToken);
 		}
 #endif // ENABLE_CRYPTO
 
@@ -2250,9 +2364,9 @@ namespace MimeKit {
 		void ReferencesChanged (object o, EventArgs e)
 		{
 			if (references.Count > 0) {
+				var builder = new ValueStringBuilder (128);
 				int lineLength = "References".Length + 1;
 				var options = FormatOptions.Default;
-				var builder = new StringBuilder ();
 
 				for (int i = 0; i < references.Count; i++) {
 					if (i > 0 && lineLength + references[i].Length + 2 >= options.MaxLineLength) {
@@ -2265,7 +2379,9 @@ namespace MimeKit {
 					}
 
 					lineLength += references[i].Length;
-					builder.Append ("<" + references[i] + ">");
+					builder.Append ('<');
+					builder.Append (references[i]);
+					builder.Append ('>');
 				}
 
 				builder.Append (options.NewLine);
@@ -2281,11 +2397,10 @@ namespace MimeKit {
 		void AddAddresses (Header header, InternetAddressList list)
 		{
 			int length = header.RawValue.Length;
-			List<InternetAddress> parsed;
 			int index = 0;
 
 			// parse the addresses in the new header and add them to our address list
-			if (!InternetAddressList.TryParse (Headers.Options, header.RawValue, ref index, length, false, 0, false, out parsed))
+			if (!InternetAddressList.TryParse (AddressParserFlags.InternalTryParse, Headers.Options, header.RawValue, ref index, length, false, 0, out var parsed))
 				return;
 
 			list.Changed -= InternetAddressListChanged;
@@ -2293,219 +2408,108 @@ namespace MimeKit {
 			list.Changed += InternetAddressListChanged;
 		}
 
-		void ReloadAddressList (HeaderId id, InternetAddressList list)
+		static LazyLoadedFields GetAddressListLazyLoadField (HeaderId id)
 		{
-			// clear the address list and reload
-			list.Changed -= InternetAddressListChanged;
-			list.Clear ();
-
-			foreach (var header in Headers) {
-				if (header.Id != id)
-					continue;
-
-				int length = header.RawValue.Length;
-				List<InternetAddress> parsed;
-				int index = 0;
-
-				if (!InternetAddressList.TryParse (Headers.Options, header.RawValue, ref index, length, false, 0, false, out parsed))
-					continue;
-
-				list.AddRange (parsed);
-			}
-
-			list.Changed += InternetAddressListChanged;
-		}
-
-		void ReloadHeader (HeaderId id)
-		{
-			if (id == HeaderId.Unknown)
-				return;
-
 			switch (id) {
-			case HeaderId.ResentMessageId:
-				resentMessageId = null;
-				break;
-			case HeaderId.ResentSender:
-				resentSender = null;
-				break;
-			case HeaderId.ResentDate:
-				resentDate = DateTimeOffset.MinValue;
-				break;
-			case HeaderId.References:
-				references.Changed -= ReferencesChanged;
-				references.Clear ();
-				references.Changed += ReferencesChanged;
-				break;
-			case HeaderId.InReplyTo:
-				inreplyto = null;
-				break;
-			case HeaderId.MessageId:
-				messageId = null;
-				break;
-			case HeaderId.Sender:
-				sender = null;
-				break;
-			case HeaderId.Importance:
-				importance = MessageImportance.Normal;
-				break;
-			case HeaderId.XPriority:
-				xpriority = XMessagePriority.Normal;
-				break;
-			case HeaderId.Priority:
-				priority = MessagePriority.Normal;
-				break;
-			case HeaderId.Date:
-				date = DateTimeOffset.MinValue;
-				break;
-			}
-
-			foreach (var header in Headers) {
-				if (header.Id != id)
-					continue;
-
-				var rawValue = header.RawValue;
-				int number, index = 0;
-
-				switch (id) {
-				case HeaderId.MimeVersion:
-					MimeUtils.TryParse (rawValue, 0, rawValue.Length, out version);
-					break;
-				case HeaderId.References:
-					references.Changed -= ReferencesChanged;
-					foreach (var msgid in MimeUtils.EnumerateReferences (rawValue, 0, rawValue.Length))
-						references.Add (msgid);
-					references.Changed += ReferencesChanged;
-					break;
-				case HeaderId.InReplyTo:
-					inreplyto = MimeUtils.EnumerateReferences (rawValue, 0, rawValue.Length).FirstOrDefault ();
-					break;
-				case HeaderId.ResentMessageId:
-					resentMessageId = MimeUtils.ParseMessageId (rawValue, 0, rawValue.Length);
-					break;
-				case HeaderId.MessageId:
-					messageId = MimeUtils.ParseMessageId (rawValue, 0, rawValue.Length);
-					break;
-				case HeaderId.ResentSender:
-					MailboxAddress.TryParse (Headers.Options, rawValue, ref index, rawValue.Length, false, out resentSender);
-					break;
-				case HeaderId.Sender:
-					MailboxAddress.TryParse (Headers.Options, rawValue, ref index, rawValue.Length, false, out sender);
-					break;
-				case HeaderId.ResentDate:
-					DateUtils.TryParse (rawValue, 0, rawValue.Length, out resentDate);
-					break;
-				case HeaderId.Importance:
-					switch (header.Value.ToLowerInvariant ().Trim ()) {
-					case "high": importance = MessageImportance.High; break;
-					case "low": importance = MessageImportance.Low; break;
-					default: importance = MessageImportance.Normal; break;
-					}
-					break;
-				case HeaderId.Priority:
-					switch (header.Value.ToLowerInvariant ().Trim ()) {
-					case "non-urgent": priority = MessagePriority.NonUrgent; break;
-					case "urgent": priority = MessagePriority.Urgent; break;
-					default: priority = MessagePriority.Normal; break;
-					}
-					break;
-				case HeaderId.XPriority:
-					ParseUtils.SkipWhiteSpace (rawValue, ref index, rawValue.Length);
-
-					if (ParseUtils.TryParseInt32 (rawValue, ref index, rawValue.Length, out number)) {
-						xpriority = (XMessagePriority) Math.Min (Math.Max (number, 1), 5);
-					} else {
-						xpriority = XMessagePriority.Normal;
-					}
-					break;
-				case HeaderId.Date:
-					DateUtils.TryParse (rawValue, 0, rawValue.Length, out date);
-					break;
-				}
+			case HeaderId.From: return LazyLoadedFields.From;
+			case HeaderId.ReplyTo: return LazyLoadedFields.ReplyTo;
+			case HeaderId.To: return LazyLoadedFields.To;
+			case HeaderId.Cc: return LazyLoadedFields.Cc;
+			case HeaderId.Bcc: return LazyLoadedFields.Bcc;
+			case HeaderId.ResentFrom: return LazyLoadedFields.ResentFrom;
+			case HeaderId.ResentReplyTo: return LazyLoadedFields.ResentReplyTo;
+			case HeaderId.ResentTo: return LazyLoadedFields.ResentTo;
+			case HeaderId.ResentCc: return LazyLoadedFields.ResentCc;
+			case HeaderId.ResentBcc: return LazyLoadedFields.ResentBcc;
+			default: return LazyLoadedFields.None;
 			}
 		}
 
 		void HeadersChanged (object o, HeaderListChangedEventArgs e)
 		{
-			InternetAddressList list;
-			byte[] rawValue;
-			int index = 0;
-			int number;
+			if (e.Action != HeaderListChangedAction.Cleared && addresses.TryGetValue (e.Header.Id, out var list)) {
+				var bit = GetAddressListLazyLoadField (e.Header.Id);
+
+				if ((lazyLoaded & bit) != 0) {
+					switch (e.Action) {
+					case HeaderListChangedAction.Added:
+						// Note: Only append new addresses of this type if the address list is already lazy-loaded.
+						AddAddresses (e.Header, list);
+						break;
+					case HeaderListChangedAction.Changed:
+					case HeaderListChangedAction.Removed:
+						// Unload the address list if it has already been loaded
+						list.Changed -= InternetAddressListChanged;
+						list.Clear ();
+						list.Changed += InternetAddressListChanged;
+						lazyLoaded &= ~bit;
+						break;
+					}
+				}
+
+				return;
+			}
 
 			switch (e.Action) {
 			case HeaderListChangedAction.Added:
-				if (addresses.TryGetValue (e.Header.Id, out list)) {
-					AddAddresses (e.Header, list);
-					break;
-				}
-
-				rawValue = e.Header.RawValue;
-
+			case HeaderListChangedAction.Changed:
+			case HeaderListChangedAction.Removed:
 				switch (e.Header.Id) {
-				case HeaderId.MimeVersion:
-					MimeUtils.TryParse (rawValue, 0, rawValue.Length, out version);
+				case HeaderId.ResentSender:
+					lazyLoaded &= ~LazyLoadedFields.ResentSender;
+					resentSender = null;
+					break;
+				case HeaderId.Sender:
+					lazyLoaded &= ~LazyLoadedFields.Sender;
+					sender = null;
+					break;
+				case HeaderId.ResentDate:
+					lazyLoaded &= ~LazyLoadedFields.ResentDate;
+					resentDate = DateTimeOffset.MinValue;
+					break;
+				case HeaderId.Date:
+					lazyLoaded &= ~LazyLoadedFields.Date;
+					date = DateTimeOffset.MinValue;
+					break;
+				case HeaderId.ResentMessageId:
+					lazyLoaded &= ~LazyLoadedFields.ResentMessageId;
+					resentMessageId = null;
+					break;
+				case HeaderId.MessageId:
+					lazyLoaded &= ~LazyLoadedFields.MessageId;
+					messageId = null;
 					break;
 				case HeaderId.References:
+					lazyLoaded &= ~LazyLoadedFields.References;
 					references.Changed -= ReferencesChanged;
-					foreach (var msgid in MimeUtils.EnumerateReferences (rawValue, 0, rawValue.Length))
-						references.Add (msgid);
+					references.Clear ();
 					references.Changed += ReferencesChanged;
 					break;
 				case HeaderId.InReplyTo:
-					inreplyto = MimeUtils.EnumerateReferences (rawValue, 0, rawValue.Length).FirstOrDefault ();
+					lazyLoaded &= ~LazyLoadedFields.InReplyTo;
+					inreplyto = null;
 					break;
-				case HeaderId.ResentMessageId:
-					resentMessageId = MimeUtils.ParseMessageId (rawValue, 0, rawValue.Length);
-					break;
-				case HeaderId.MessageId:
-					messageId = MimeUtils.ParseMessageId (rawValue, 0, rawValue.Length);
-					break;
-				case HeaderId.ResentSender:
-					MailboxAddress.TryParse (Headers.Options, rawValue, ref index, rawValue.Length, false, out resentSender);
-					break;
-				case HeaderId.Sender:
-					MailboxAddress.TryParse (Headers.Options, rawValue, ref index, rawValue.Length, false, out sender);
-					break;
-				case HeaderId.ResentDate:
-					DateUtils.TryParse (rawValue, 0, rawValue.Length, out resentDate);
+				case HeaderId.MimeVersion:
+					lazyLoaded &= ~LazyLoadedFields.MimeVersion;
+					version = null;
 					break;
 				case HeaderId.Importance:
-					switch (e.Header.Value.ToLowerInvariant ().Trim ()) {
-					case "high": importance = MessageImportance.High; break;
-					case "low": importance = MessageImportance.Low; break;
-					default: importance = MessageImportance.Normal; break;
-					}
+					lazyLoaded &= ~LazyLoadedFields.Importance;
+					importance = MessageImportance.Normal;
 					break;
 				case HeaderId.Priority:
-					switch (e.Header.Value.ToLowerInvariant ().Trim ()) {
-					case "non-urgent": priority = MessagePriority.NonUrgent; break;
-					case "urgent": priority = MessagePriority.Urgent; break;
-					default: priority = MessagePriority.Normal; break;
-					}
+					lazyLoaded &= ~LazyLoadedFields.Priority;
+					priority = MessagePriority.Normal;
 					break;
 				case HeaderId.XPriority:
-					ParseUtils.SkipWhiteSpace (rawValue, ref index, rawValue.Length);
-
-					if (ParseUtils.TryParseInt32 (rawValue, ref index, rawValue.Length, out number)) {
-						xpriority = (XMessagePriority) Math.Min (Math.Max (number, 1), 5);
-					} else {
-						xpriority = XMessagePriority.Normal;
-					}
-					break;
-				case HeaderId.Date:
-					DateUtils.TryParse (rawValue, 0, rawValue.Length, out date);
+					lazyLoaded &= ~LazyLoadedFields.XPriority;
+					xpriority = XMessagePriority.Normal;
 					break;
 				}
-				break;
-			case HeaderListChangedAction.Changed:
-			case HeaderListChangedAction.Removed:
-				if (addresses.TryGetValue (e.Header.Id, out list)) {
-					ReloadAddressList (e.Header.Id, list);
-					break;
-				}
-
-				ReloadHeader (e.Header.Id);
 				break;
 			case HeaderListChangedAction.Cleared:
+				lazyLoaded = LazyLoadedFields.None;
+
 				foreach (var kvp in addresses) {
 					kvp.Value.Changed -= InternetAddressListChanged;
 					kvp.Value.Clear ();
@@ -2527,10 +2531,41 @@ namespace MimeKit {
 				version = null;
 				sender = null;
 				break;
-			default:
-				throw new ArgumentOutOfRangeException ();
 			}
 		}
+
+		#region IDisposable implementation
+
+		/// <summary>
+		/// Releases the unmanaged resources used by the <see cref="MimeMessage"/> and
+		/// optionally releases the managed resources.
+		/// </summary>
+		/// <remarks>
+		/// Releases the unmanaged resources used by the <see cref="MimeMessage"/> and
+		/// optionally releases the managed resources.
+		/// </remarks>
+		/// <param name="disposing"><c>true</c> to release both managed and unmanaged resources;
+		/// <c>false</c> to release only the unmanaged resources.</param>
+		protected virtual void Dispose (bool disposing)
+		{
+			if (disposing && Body != null)
+				Body.Dispose ();
+		}
+
+		/// <summary>
+		/// Releases all resources used by the <see cref="MimeMessage"/> object.
+		/// </summary>
+		/// <remarks>Call <see cref="Dispose()"/> when you are finished using the <see cref="MimeMessage"/>. The
+		/// <see cref="Dispose()"/> method leaves the <see cref="MimeMessage"/> in an unusable state. After
+		/// calling <see cref="Dispose()"/>, you must release all references to the <see cref="MimeMessage"/> so
+		/// the garbage collector can reclaim the memory that the <see cref="MimeMessage"/> was occupying.</remarks>
+		public void Dispose ()
+		{
+			Dispose (true);
+			GC.SuppressFinalize (this);
+		}
+
+		#endregion
 
 		/// <summary>
 		/// Load a <see cref="MimeMessage"/> from the specified stream.
@@ -2541,7 +2576,7 @@ namespace MimeKit {
 		/// <para>If <paramref name="persistent"/> is <c>true</c> and <paramref name="stream"/> is seekable, then
 		/// the <see cref="MimeParser"/> will not copy the content of <see cref="MimePart"/>s into memory. Instead,
 		/// it will use a <see cref="BoundStream"/> to reference a substream of <paramref name="stream"/>.
-		/// This has the potential to not only save mmeory usage, but also improve <see cref="MimeParser"/>
+		/// This has the potential to not only save memory usage, but also improve <see cref="MimeParser"/>
 		/// performance.</para>
 		/// </remarks>
 		/// <returns>The parsed message.</returns>
@@ -2563,12 +2598,12 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static MimeMessage Load (ParserOptions options, Stream stream, bool persistent, CancellationToken cancellationToken = default (CancellationToken))
+		public static MimeMessage Load (ParserOptions options, Stream stream, bool persistent, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (stream == null)
+			if (stream is null)
 				throw new ArgumentNullException (nameof (stream));
 
 			var parser = new MimeParser (options, stream, MimeFormat.Entity, persistent);
@@ -2585,7 +2620,7 @@ namespace MimeKit {
 		/// <para>If <paramref name="persistent"/> is <c>true</c> and <paramref name="stream"/> is seekable, then
 		/// the <see cref="MimeParser"/> will not copy the content of <see cref="MimePart"/>s into memory. Instead,
 		/// it will use a <see cref="BoundStream"/> to reference a substream of <paramref name="stream"/>.
-		/// This has the potential to not only save mmeory usage, but also improve <see cref="MimeParser"/>
+		/// This has the potential to not only save memory usage, but also improve <see cref="MimeParser"/>
 		/// performance.</para>
 		/// </remarks>
 		/// <returns>The parsed message.</returns>
@@ -2607,12 +2642,12 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static Task<MimeMessage> LoadAsync (ParserOptions options, Stream stream, bool persistent, CancellationToken cancellationToken = default (CancellationToken))
+		public static Task<MimeMessage> LoadAsync (ParserOptions options, Stream stream, bool persistent, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (stream == null)
+			if (stream is null)
 				throw new ArgumentNullException (nameof (stream));
 
 			var parser = new MimeParser (options, stream, MimeFormat.Entity, persistent);
@@ -2645,7 +2680,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static MimeMessage Load (ParserOptions options, Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public static MimeMessage Load (ParserOptions options, Stream stream, CancellationToken cancellationToken = default)
 		{
 			return Load (options, stream, false, cancellationToken);
 		}
@@ -2675,7 +2710,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static Task<MimeMessage> LoadAsync (ParserOptions options, Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public static Task<MimeMessage> LoadAsync (ParserOptions options, Stream stream, CancellationToken cancellationToken = default)
 		{
 			return LoadAsync (options, stream, false, cancellationToken);
 		}
@@ -2689,7 +2724,7 @@ namespace MimeKit {
 		/// <para>If <paramref name="persistent"/> is <c>true</c> and <paramref name="stream"/> is seekable, then
 		/// the <see cref="MimeParser"/> will not copy the content of <see cref="MimePart"/>s into memory. Instead,
 		/// it will use a <see cref="BoundStream"/> to reference a substream of <paramref name="stream"/>.
-		/// This has the potential to not only save mmeory usage, but also improve <see cref="MimeParser"/>
+		/// This has the potential to not only save memory usage, but also improve <see cref="MimeParser"/>
 		/// performance.</para>
 		/// </remarks>
 		/// <returns>The parsed message.</returns>
@@ -2708,7 +2743,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static MimeMessage Load (Stream stream, bool persistent, CancellationToken cancellationToken = default (CancellationToken))
+		public static MimeMessage Load (Stream stream, bool persistent, CancellationToken cancellationToken = default)
 		{
 			return Load (ParserOptions.Default, stream, persistent, cancellationToken);
 		}
@@ -2722,7 +2757,7 @@ namespace MimeKit {
 		/// <para>If <paramref name="persistent"/> is <c>true</c> and <paramref name="stream"/> is seekable, then
 		/// the <see cref="MimeParser"/> will not copy the content of <see cref="MimePart"/>s into memory. Instead,
 		/// it will use a <see cref="BoundStream"/> to reference a substream of <paramref name="stream"/>.
-		/// This has the potential to not only save mmeory usage, but also improve <see cref="MimeParser"/>
+		/// This has the potential to not only save memory usage, but also improve <see cref="MimeParser"/>
 		/// performance.</para>
 		/// </remarks>
 		/// <returns>The parsed message.</returns>
@@ -2741,7 +2776,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static Task<MimeMessage> LoadAsync (Stream stream, bool persistent, CancellationToken cancellationToken = default (CancellationToken))
+		public static Task<MimeMessage> LoadAsync (Stream stream, bool persistent, CancellationToken cancellationToken = default)
 		{
 			return LoadAsync (ParserOptions.Default, stream, persistent, cancellationToken);
 		}
@@ -2768,7 +2803,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static MimeMessage Load (Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public static MimeMessage Load (Stream stream, CancellationToken cancellationToken = default)
 		{
 			return Load (ParserOptions.Default, stream, false, cancellationToken);
 		}
@@ -2795,7 +2830,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static Task<MimeMessage> LoadAsync (Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public static Task<MimeMessage> LoadAsync (Stream stream, CancellationToken cancellationToken = default)
 		{
 			return LoadAsync (ParserOptions.Default, stream, false, cancellationToken);
 		}
@@ -2838,12 +2873,12 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static MimeMessage Load (ParserOptions options, string fileName, CancellationToken cancellationToken = default (CancellationToken))
+		public static MimeMessage Load (ParserOptions options, string fileName, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (fileName == null)
+			if (fileName is null)
 				throw new ArgumentNullException (nameof (fileName));
 
 			using (var stream = File.OpenRead (fileName))
@@ -2888,12 +2923,12 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static async Task<MimeMessage> LoadAsync (ParserOptions options, string fileName, CancellationToken cancellationToken = default (CancellationToken))
+		public static async Task<MimeMessage> LoadAsync (ParserOptions options, string fileName, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (fileName == null)
+			if (fileName is null)
 				throw new ArgumentNullException (nameof (fileName));
 
 			using (var stream = File.OpenRead (fileName))
@@ -2935,7 +2970,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static MimeMessage Load (string fileName, CancellationToken cancellationToken = default (CancellationToken))
+		public static MimeMessage Load (string fileName, CancellationToken cancellationToken = default)
 		{
 			return Load (ParserOptions.Default, fileName, cancellationToken);
 		}
@@ -2975,7 +3010,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static Task<MimeMessage> LoadAsync (string fileName, CancellationToken cancellationToken = default (CancellationToken))
+		public static Task<MimeMessage> LoadAsync (string fileName, CancellationToken cancellationToken = default)
 		{
 			return LoadAsync (ParserOptions.Default, fileName, cancellationToken);
 		}
@@ -2983,9 +3018,27 @@ namespace MimeKit {
 #if ENABLE_SNM
 		static MimePart GetMimePart (AttachmentBase item)
 		{
+			if (item.ContentStream.CanSeek)
+				item.ContentStream.Position = 0;
+
+			var stream = new MemoryBlockStream ();
+
+			try {
+				item.ContentStream.CopyTo (stream);
+				stream.Position = 0;
+			} catch {
+				stream.Dispose ();
+				throw;
+			}
+
+			try {
+				item.ContentStream.Position = 0;
+			} catch { }
+
 			var mimeType = item.ContentType.ToString ();
-			var contentType = ContentType.Parse (mimeType);
-			var attachment = item as Attachment;
+			if (!ContentType.TryParse (mimeType, out var contentType))
+				contentType = new ContentType ("application", "octet-stream");
+
 			MimePart part;
 
 			if (contentType.MediaType.Equals ("text", StringComparison.OrdinalIgnoreCase))
@@ -2993,10 +3046,14 @@ namespace MimeKit {
 			else
 				part = new MimePart (contentType);
 
-			if (attachment != null) {
-				var disposition = attachment.ContentDisposition.ToString ();
-				part.ContentDisposition = ContentDisposition.Parse (disposition);
+			if (item is Attachment attachment) {
+				var value = attachment.ContentDisposition.ToString ();
+				if (ContentDisposition.TryParse (value, out var disposition))
+					part.ContentDisposition = disposition;
 			}
+
+			if (item.ContentId != null)
+				part.ContentId = item.ContentId;
 
 			switch (item.TransferEncoding) {
 			case System.Net.Mime.TransferEncoding.QuotedPrintable:
@@ -3008,27 +3065,60 @@ namespace MimeKit {
 			case System.Net.Mime.TransferEncoding.SevenBit:
 				part.ContentTransferEncoding = ContentEncoding.SevenBit;
 				break;
-			//case System.Net.Mime.TransferEncoding.EightBit:
-			//	part.ContentTransferEncoding = ContentEncoding.EightBit;
-			//	break;
+			case System.Net.Mime.TransferEncoding.EightBit:
+				part.ContentTransferEncoding = ContentEncoding.EightBit;
+				break;
 			}
-
-			if (item.ContentId != null)
-				part.ContentId = item.ContentId;
-
-			var stream = new MemoryBlockStream ();
-			if (item.ContentStream.CanSeek)
-				item.ContentStream.Position = 0;
-			item.ContentStream.CopyTo (stream);
-			stream.Position = 0;
 
 			part.Content = new MimeContent (stream);
 
 			return part;
 		}
 
+		static void AddLinkedResources (MultipartAlternative alternative, MimePart root, AlternateView view)
+		{
+			var related = new MultipartRelated ();
+
+			related.ContentType.Parameters.Add ("type", root.ContentType.MimeType);
+			related.ContentBase = view.BaseUri;
+
+			related.Add (root);
+
+			foreach (var resource in view.LinkedResources) {
+				var part = GetMimePart (resource);
+
+				if (resource.ContentLink != null)
+					part.ContentLocation = resource.ContentLink;
+
+				related.Add (part);
+			}
+
+			alternative.Add (related);
+		}
+
+		static MimeEntity AddAlternateViews (MimeEntity body, AlternateViewCollection alternateViews)
+		{
+			var alternative = new MultipartAlternative ();
+
+			if (body != null)
+				alternative.Add (body);
+
+			foreach (var view in alternateViews) {
+				var part = GetMimePart (view);
+
+				if (view.LinkedResources.Count > 0) {
+					AddLinkedResources (alternative, part, view);
+				} else {
+					part.ContentBase = view.BaseUri;
+					alternative.Add (part);
+				}
+			}
+
+			return alternative;
+		}
+
 		/// <summary>
-		/// Creates a new <see cref="MimeMessage"/> from a <see cref="System.Net.Mail.MailMessage"/>.
+		/// Create a new <see cref="MimeMessage"/> from a <see cref="System.Net.Mail.MailMessage"/>.
 		/// </summary>
 		/// <remarks>
 		/// Creates a new <see cref="MimeMessage"/> from a <see cref="System.Net.Mail.MailMessage"/>.
@@ -3040,13 +3130,15 @@ namespace MimeKit {
 		/// </exception>
 		public static MimeMessage CreateFromMailMessage (MailMessage message)
 		{
-			if (message == null)
+			if (message is null)
 				throw new ArgumentNullException (nameof (message));
+
+			var headerEncoding = message.HeadersEncoding ?? Encoding.UTF8;
 
 			var headers = new List<Header> ();
 			foreach (var field in message.Headers.AllKeys) {
 				foreach (var value in message.Headers.GetValues (field))
-					headers.Add (new Header (field, value));
+					headers.Add (new Header (headerEncoding, field, value));
 			}
 
 			var msg = new MimeMessage (ParserOptions.Default, headers, RfcComplianceMode.Strict);
@@ -3116,45 +3208,10 @@ namespace MimeKit {
 				body = text;
 			}
 
-			if (message.AlternateViews.Count > 0) {
-				var alternative = new MultipartAlternative ();
+			if (message.AlternateViews.Count > 0)
+				body = AddAlternateViews (body, message.AlternateViews);
 
-				if (body != null)
-					alternative.Add (body);
-
-				foreach (var view in message.AlternateViews) {
-					var part = GetMimePart (view);
-
-					if (view.LinkedResources.Count > 0) {
-						var type = part.ContentType.MediaType + "/" + part.ContentType.MediaSubtype;
-						var related = new MultipartRelated ();
-
-						related.ContentType.Parameters.Add ("type", type);
-						related.ContentBase = view.BaseUri;
-
-						related.Add (part);
-
-						foreach (var resource in view.LinkedResources) {
-							part = GetMimePart (resource);
-
-							if (resource.ContentLink != null)
-								part.ContentLocation = resource.ContentLink;
-
-							related.Add (part);
-						}
-
-						alternative.Add (related);
-					} else {
-						part.ContentBase = view.BaseUri;
-						alternative.Add (part);
-					}
-				}
-
-				body = alternative;
-			}
-
-			if (body == null)
-				body = new TextPart (message.IsBodyHtml ? "html" : "plain");
+			body ??= new TextPart (message.IsBodyHtml ? "html" : "plain");
 
 			if (message.Attachments.Count > 0) {
 				var mixed = new Multipart ("mixed");

@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -25,9 +25,6 @@
 //
 
 using System;
-using System.Linq;
-using System.Text;
-using System.Reflection;
 using System.Collections.Generic;
 
 using MimeKit.Utils;
@@ -69,19 +66,16 @@ namespace MimeKit {
 		/// <summary>
 		/// The ARC-Authentication-Results header field.
 		/// </summary>
-		[HeaderName ("ARC-Authentication-Results")]
 		ArcAuthenticationResults,
 
 		/// <summary>
 		/// The ARC-Message-Signature header field.
 		/// </summary>
-		[HeaderName ("ARC-Message-Signature")]
 		ArcMessageSignature,
 
 		/// <summary>
 		/// The ARC-Seal header field.
 		/// </summary>
-		[HeaderName ("ARC-Seal")]
 		ArcSeal,
 
 		/// <summary>
@@ -307,13 +301,11 @@ namespace MimeKit {
 		/// <summary>
 		/// The DKIM-Signature header field.
 		/// </summary>
-		[HeaderName ("DKIM-Signature")]
 		DkimSignature,
 
 		/// <summary>
 		/// The DomainKey-Signature header field.
 		/// </summary>
-		[HeaderName ("DomainKey-Signature")]
 		DomainKeySignature,
 
 		/// <summary>
@@ -392,7 +384,7 @@ namespace MimeKit {
 		Lines,
 
 		/// <summary>
-		/// THe List-Archive header field.
+		/// The List-Archive header field.
 		/// </summary>
 		ListArchive,
 
@@ -439,7 +431,6 @@ namespace MimeKit {
 		/// <summary>
 		/// The MIME-Version header field.
 		/// </summary>
-		[HeaderName ("MIME-Version")]
 		MimeVersion,
 
 		/// <summary>
@@ -495,7 +486,6 @@ namespace MimeKit {
 		/// <summary>
 		/// The Prevent-NonDelivery-Report header field.
 		/// </summary>
-		[HeaderName ("Prevent-NonDelivery-Report")]
 		PreventNonDeliveryReport,
 
 		/// <summary>
@@ -511,7 +501,6 @@ namespace MimeKit {
 		/// <summary>
 		/// The Received-SPF header field.
 		/// </summary>
-		[HeaderName ("Received-SPF")]
 		ReceivedSPF,
 
 		/// <summary>
@@ -632,7 +621,6 @@ namespace MimeKit {
 		/// <summary>
 		/// The TLS-Required header field.
 		/// </summary>
-		[HeaderName ("TLS-Required")]
 		TLSRequired,
 
 		/// <summary>
@@ -648,49 +636,41 @@ namespace MimeKit {
 		/// <summary>
 		/// The X400-Content-Identifier header field.
 		/// </summary>
-		[HeaderName ("X400-Content-Identifier")]
 		X400ContentIdentifier,
 
 		/// <summary>
 		/// The X400-Content-Return header field.
 		/// </summary>
-		[HeaderName ("X400-Content-Return")]
 		X400ContentReturn,
 
 		/// <summary>
 		/// The X400-Content-Type header field.
 		/// </summary>
-		[HeaderName ("X400-Content-Type")]
 		X400ContentType,
 
 		/// <summary>
 		/// The X400-MTS-Identifier header field.
 		/// </summary>
-		[HeaderName ("X400-MTS-Identifier")]
 		X400MTSIdentifier,
 
 		/// <summary>
 		/// The X400-Originator header field.
 		/// </summary>
-		[HeaderName ("X400-Originator")]
 		X400Originator,
 
 		/// <summary>
 		/// The X400-Received header field.
 		/// </summary>
-		[HeaderName ("X400-Received")]
 		X400Received,
 
 		/// <summary>
 		/// The X400-Recipients header field.
 		/// </summary>
-		[HeaderName ("X400-Recipients")]
 		X400Recipients,
 
 		/// <summary>
 		/// The X400-Trace header field.
 		/// </summary>
-		[HeaderName ("X400-Trace")]
 		X400Trace,
 
 		/// <summary>
@@ -701,7 +681,6 @@ namespace MimeKit {
 		/// <summary>
 		/// The X-MSMail-Priority header field.
 		/// </summary>
-		[HeaderName ("X-MSMail-Priority")]
 		XMSMailPriority,
 
 		/// <summary>
@@ -720,18 +699,6 @@ namespace MimeKit {
 		Unknown = -1
 	}
 
-	[AttributeUsage (AttributeTargets.Field)]
-	class HeaderNameAttribute : Attribute {
-		public HeaderNameAttribute (string name)
-		{
-			HeaderName = name;
-		}
-
-		public string HeaderName {
-			get; protected set;
-		}
-	}
-
 	/// <summary>
 	/// <see cref="HeaderId"/> extension methods.
 	/// </summary>
@@ -740,16 +707,149 @@ namespace MimeKit {
 	/// </remarks>
 	public static class HeaderIdExtensions
 	{
-		static readonly Dictionary<string, HeaderId> dict;
+		static readonly string[] HeaderNames = new string[] {
+			"Accept-Language",
+			"Ad-Hoc",
+			"Alternate-Recipient",
+			"Apparently-To",
+			"Approved",
+			"ARC-Authentication-Results",
+			"ARC-Message-Signature",
+			"ARC-Seal",
+			"Archive",
+			"Archived-At",
+			"Article",
+			"Authentication-Results",
+			"Autocrypt",
+			"Autocrypt-Gossip",
+			"Autocrypt-Setup-Message",
+			"Autoforwarded",
+			"Auto-Submitted",
+			"Autosubmitted",
+			"Base",
+			"Bcc",
+			"Body",
+			"Bytes",
+			"Cc",
+			"Comments",
+			"Content-Alternative",
+			"Content-Base",
+			"Content-Class",
+			"Content-Description",
+			"Content-Disposition",
+			"Content-Duration",
+			"Content-Features",
+			"Content-Id",
+			"Content-Identifier",
+			"Content-Language",
+			"Content-Length",
+			"Content-Location",
+			"Content-Md5",
+			"Content-Return",
+			"Content-Transfer-Encoding",
+			"Content-Translation-Type",
+			"Content-Type",
+			"Control",
+			"Conversion",
+			"Conversion-With-Loss",
+			"Date",
+			"Date-Received",
+			"Deferred-Delivery",
+			"Delivery-Date",
+			"Disclose-Recipients",
+			"Disposition-Notification-Options",
+			"Disposition-Notification-To",
+			"Distribution",
+			"DKIM-Signature",
+			"DomainKey-Signature",
+			"Encoding",
+			"Encrypted",
+			"Expires",
+			"Expiry-Date",
+			"Followup-To",
+			"From",
+			"Generate-Delivery-Report",
+			"Importance",
+			"Injection-Date",
+			"Injection-Info",
+			"In-Reply-To",
+			"Keywords",
+			"Language",
+			"Latest-Delivery-Time",
+			"Lines",
+			"List-Archive",
+			"List-Help",
+			"List-Id",
+			"List-Owner",
+			"List-Post",
+			"List-Subscribe",
+			"List-Unsubscribe",
+			"List-Unsubscribe-Post",
+			"Message-Id",
+			"MIME-Version",
+			"Newsgroups",
+			"Nntp-Posting-Host",
+			"Organization",
+			"Original-From",
+			"Original-Message-Id",
+			"Original-Recipient",
+			"Original-Return-Address",
+			"Original-Subject",
+			"Path",
+			"Precedence",
+			"Prevent-NonDelivery-Report",
+			"Priority",
+			"Received",
+			"Received-SPF",
+			"References",
+			"Relay-Version",
+			"Reply-By",
+			"Reply-To",
+			"Require-Recipient-Valid-Since",
+			"Resent-Bcc",
+			"Resent-Cc",
+			"Resent-Date",
+			"Resent-From",
+			"Resent-Message-Id",
+			"Resent-Reply-To",
+			"Resent-Sender",
+			"Resent-To",
+			"Return-Path",
+			"Return-Receipt-To",
+			"See-Also",
+			"Sender",
+			"Sensitivity",
+			"Solicitation",
+			"Status",
+			"Subject",
+			"Summary",
+			"Supersedes",
+			"TLS-Required",
+			"To",
+			"User-Agent",
+			"X400-Content-Identifier",
+			"X400-Content-Return",
+			"X400-Content-Type",
+			"X400-MTS-Identifier",
+			"X400-Originator",
+			"X400-Received",
+			"X400-Recipients",
+			"X400-Trace",
+			"X-Mailer",
+			"X-MSMail-Priority",
+			"X-Priority",
+			"X-Status",
+		};
+		static readonly Dictionary<string, HeaderId> IdMapping;
 
 		static HeaderIdExtensions ()
 		{
 			var values = (HeaderId[]) Enum.GetValues (typeof (HeaderId));
 
-			dict = new Dictionary<string, HeaderId> (values.Length - 1, MimeUtils.OrdinalIgnoreCase);
+			IdMapping = new Dictionary<string, HeaderId> (values.Length - 1, MimeUtils.OrdinalIgnoreCase);
 
 			for (int i = 0; i < values.Length - 1; i++)
-				dict.Add (values[i].ToHeaderName (), values[i]);
+				IdMapping.Add (HeaderNames[i], values[i]);
 		}
 
 		/// <summary>
@@ -762,34 +862,17 @@ namespace MimeKit {
 		/// <param name="value">The enum value.</param>
 		public static string ToHeaderName (this HeaderId value)
 		{
-			var name = value.ToString ();
+			int index = (int) value;
 
-#if NETSTANDARD1_3 || NETSTANDARD1_6
-			var field = typeof (HeaderId).GetTypeInfo ().GetDeclaredField (name);
-			var attrs = field.GetCustomAttributes (typeof (HeaderNameAttribute), false).ToArray ();
-#else
-			var field = typeof (HeaderId).GetField (name);
-			var attrs = field.GetCustomAttributes (typeof (HeaderNameAttribute), false);
-#endif
+			if (index >= 0 && index < HeaderNames.Length)
+				return HeaderNames[index];
 
-			if (attrs != null && attrs.Length == 1)
-				return ((HeaderNameAttribute) attrs[0]).HeaderName;
-
-			var builder = new StringBuilder (name);
-
-			for (int i = 1; i < builder.Length; i++) {
-				if (char.IsUpper (builder[i]))
-					builder.Insert (i++, '-');
-			}
-
-			return builder.ToString ();
+			return "Unknown";
 		}
 
 		internal static HeaderId ToHeaderId (this string name)
 		{
-			HeaderId value;
-
-			if (!dict.TryGetValue (name, out value))
+			if (!IdMapping.TryGetValue (name, out var value))
 				return HeaderId.Unknown;
 
 			return value;

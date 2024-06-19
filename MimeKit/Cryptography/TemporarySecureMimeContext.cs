@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -26,6 +26,8 @@
 
 using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Collections.Generic;
 
 using Org.BouncyCastle.Crypto;
@@ -34,6 +36,10 @@ using Org.BouncyCastle.Pkix;
 using Org.BouncyCastle.X509;
 using Org.BouncyCastle.X509.Store;
 using Org.BouncyCastle.Asn1.X509;
+using Org.BouncyCastle.Security;
+using Org.BouncyCastle.Utilities.Collections;
+
+using X509Certificate2 = System.Security.Cryptography.X509Certificates.X509Certificate2;
 
 namespace MimeKit.Cryptography {
 	/// <summary>
@@ -46,11 +52,11 @@ namespace MimeKit.Cryptography {
 	/// </remarks>
 	public class TemporarySecureMimeContext : BouncyCastleSecureMimeContext
 	{
-		readonly Dictionary<string, EncryptionAlgorithm[]> capabilities;
-		internal readonly Dictionary<string, AsymmetricKeyParameter> keys;
-		internal readonly List<X509Certificate> certificates;
-		readonly HashSet<string> fingerprints;
-		readonly List<X509Crl> crls;
+		readonly Dictionary<string, EncryptionAlgorithm[]> capabilities = new Dictionary<string, EncryptionAlgorithm[]> (StringComparer.Ordinal);
+		internal readonly Dictionary<string, AsymmetricKeyParameter> keys = new Dictionary<string, AsymmetricKeyParameter> (StringComparer.Ordinal);
+		internal readonly List<X509Certificate> certificates = new List<X509Certificate> ();
+		readonly HashSet<string> fingerprints = new HashSet<string> ();
+		readonly List<X509Crl> crls = new List<X509Crl> ();
 
 		/// <summary>
 		/// Initialize a new instance of the <see cref="TemporarySecureMimeContext"/> class.
@@ -58,13 +64,22 @@ namespace MimeKit.Cryptography {
 		/// <remarks>
 		/// Creates a new <see cref="TemporarySecureMimeContext"/>.
 		/// </remarks>
-		public TemporarySecureMimeContext ()
+		public TemporarySecureMimeContext () : base ()
 		{
-			capabilities = new Dictionary<string, EncryptionAlgorithm[]> (StringComparer.Ordinal);
-			keys = new Dictionary<string, AsymmetricKeyParameter> (StringComparer.Ordinal);
-			certificates = new List<X509Certificate> ();
-			fingerprints = new HashSet<string> ();
-			crls = new List<X509Crl> ();
+		}
+
+		/// <summary>
+		/// Initialize a new instance of the <see cref="TemporarySecureMimeContext"/> class.
+		/// </summary>
+		/// <remarks>
+		/// Creates a new <see cref="TemporarySecureMimeContext"/>.
+		/// </remarks>
+		/// <param name="random">A secure pseudo-random number generator.</param>
+		/// <exception cref="ArgumentNullException">
+		/// <paramref name="random"/> is <c>null</c>.
+		/// </exception>
+		public TemporarySecureMimeContext (SecureRandom random) : base (random)
+		{
 		}
 
 		/// <summary>
@@ -75,17 +90,19 @@ namespace MimeKit.Cryptography {
 		/// </remarks>
 		/// <returns><c>true</c> if the mailbox address can be used for signing; otherwise, <c>false</c>.</returns>
 		/// <param name="signer">The signer.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="signer"/> is <c>null</c>.
 		/// </exception>
-		public override bool CanSign (MailboxAddress signer)
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		public override bool CanSign (MailboxAddress signer, CancellationToken cancellationToken = default)
 		{
 			if (signer == null)
 				throw new ArgumentNullException (nameof (signer));
 
-			AsymmetricKeyParameter key;
-
-			return GetCmsSignerCertificate (signer, out key) != null;
+			return GetCmsSignerCertificate (signer, out _) != null;
 		}
 
 		/// <summary>
@@ -96,10 +113,14 @@ namespace MimeKit.Cryptography {
 		/// </remarks>
 		/// <returns><c>true</c> if the cryptography context can be used to encrypt to the designated recipient; otherwise, <c>false</c>.</returns>
 		/// <param name="mailbox">The recipient's mailbox address.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="mailbox"/> is <c>null</c>.
 		/// </exception>
-		public override bool CanEncrypt (MailboxAddress mailbox)
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		public override bool CanEncrypt (MailboxAddress mailbox, CancellationToken cancellationToken = default)
 		{
 			if (mailbox == null)
 				throw new ArgumentNullException (nameof (mailbox));
@@ -117,7 +138,7 @@ namespace MimeKit.Cryptography {
 		/// </remarks>
 		/// <returns>The certificate on success; otherwise <c>null</c>.</returns>
 		/// <param name="selector">The search criteria for the certificate.</param>
-		protected override X509Certificate GetCertificate (IX509Selector selector)
+		protected override X509Certificate GetCertificate (ISelector<X509Certificate> selector)
 		{
 			if (selector == null && certificates.Count > 0)
 				return certificates[0];
@@ -138,13 +159,12 @@ namespace MimeKit.Cryptography {
 		/// </remarks>
 		/// <returns>The private key on success; otherwise <c>null</c>.</returns>
 		/// <param name="selector">The search criteria for the private key.</param>
-		protected override AsymmetricKeyParameter GetPrivateKey (IX509Selector selector)
+		protected override AsymmetricKeyParameter GetPrivateKey (ISelector<X509Certificate> selector)
 		{
 			foreach (var certificate in certificates) {
 				var fingerprint = certificate.GetFingerprint ();
-				AsymmetricKeyParameter key;
 
-				if (!keys.TryGetValue (fingerprint, out key))
+				if (!keys.TryGetValue (fingerprint, out var key))
 					continue;
 
 				if (selector != null && !selector.Match (certificate))
@@ -164,9 +184,9 @@ namespace MimeKit.Cryptography {
 		/// generally issued by a certificate authority (CA).
 		/// </remarks>
 		/// <returns>The trusted anchors.</returns>
-		protected override Org.BouncyCastle.Utilities.Collections.HashSet GetTrustedAnchors ()
+		protected override ISet<TrustAnchor> GetTrustedAnchors ()
 		{
-			var anchors = new Org.BouncyCastle.Utilities.Collections.HashSet ();
+			var anchors = new HashSet<TrustAnchor> ();
 
 			foreach (var certificate in certificates) {
 				var keyUsage = certificate.GetKeyUsage ();
@@ -187,7 +207,7 @@ namespace MimeKit.Cryptography {
 		/// the end of the chain.
 		/// </remarks>
 		/// <returns>The intermediate certificates.</returns>
-		protected override IX509Store GetIntermediateCertificates ()
+		protected override IStore<X509Certificate> GetIntermediateCertificates ()
 		{
 			var intermediates = new X509CertificateStore ();
 
@@ -210,9 +230,9 @@ namespace MimeKit.Cryptography {
 		/// itself or by the owner of the revoked certificate.
 		/// </remarks>
 		/// <returns>The certificate revocation lists.</returns>
-		protected override IX509Store GetCertificateRevocationLists ()
+		protected override IStore<X509Crl> GetCertificateRevocationLists ()
 		{
-			return X509StoreFactory.Create ("Crl/Collection", new X509CollectionStoreParameters (crls));
+			return CollectionUtilities.CreateStore (crls);
 		}
 
 		/// <summary>
@@ -291,9 +311,8 @@ namespace MimeKit.Cryptography {
 				throw new CertificateNotFoundException (mailbox, "A valid certificate could not be found.");
 
 			var recipient = new CmsRecipient (certificate);
-			EncryptionAlgorithm[] algorithms;
 
-			if (capabilities.TryGetValue (certificate.GetFingerprint (), out algorithms))
+			if (capabilities.TryGetValue (certificate.GetFingerprint (), out var algorithms))
 				recipient.EncryptionAlgorithms = algorithms;
 
 			return recipient;
@@ -354,9 +373,8 @@ namespace MimeKit.Cryptography {
 		protected override CmsSigner GetCmsSigner (MailboxAddress mailbox, DigestAlgorithm digestAlgo)
 		{
 			X509Certificate certificate;
-			AsymmetricKeyParameter key;
 
-			if ((certificate = GetCmsSignerCertificate (mailbox, out key)) == null)
+			if ((certificate = GetCmsSignerCertificate (mailbox, out var key)) == null)
 				throw new CertificateNotFoundException (mailbox, "A valid signing certificate could not be found.");
 
 			return new CmsSigner (BuildCertificateChain (certificate), key) {
@@ -386,12 +404,16 @@ namespace MimeKit.Cryptography {
 		/// </remarks>
 		/// <param name="stream">The raw certificate and key data in pkcs12 format.</param>
 		/// <param name="password">The password to unlock the stream.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <para><paramref name="stream"/> is <c>null</c>.</para>
 		/// <para>-or-</para>
 		/// <para><paramref name="password"/> is <c>null</c>.</para>
 		/// </exception>
-		public override void Import (Stream stream, string password)
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		public override void Import (Stream stream, string password, CancellationToken cancellationToken = default)
 		{
 			if (stream == null)
 				throw new ArgumentNullException (nameof (stream));
@@ -399,7 +421,10 @@ namespace MimeKit.Cryptography {
 			if (password == null)
 				throw new ArgumentNullException (nameof (password));
 
-			var pkcs12 = new Pkcs12Store (stream, password.ToCharArray ());
+			cancellationToken.ThrowIfCancellationRequested ();
+
+			var pkcs12 = new Pkcs12StoreBuilder ().Build ();
+			pkcs12.Load (stream, password.ToCharArray ());
 
 			foreach (string alias in pkcs12.Aliases) {
 				if (pkcs12.IsKeyEntry (alias)) {
@@ -407,7 +432,7 @@ namespace MimeKit.Cryptography {
 					var entry = pkcs12.GetKey (alias);
 
 					for (int i = 0; i < chain.Length; i++)
-						Import (chain[i].Certificate);
+						Import (chain[i].Certificate, cancellationToken);
 
 					var fingerprint = chain[0].Certificate.GetFingerprint ();
 					if (!keys.ContainsKey (fingerprint))
@@ -415,44 +440,112 @@ namespace MimeKit.Cryptography {
 				} else if (pkcs12.IsCertificateEntry (alias)) {
 					var entry = pkcs12.GetCertificate (alias);
 
-					Import (entry.Certificate);
+					Import (entry.Certificate, cancellationToken);
 				}
 			}
 		}
 
 		/// <summary>
-		/// Imports the specified certificate.
+		/// Asynchronously imports certificates and keys from a pkcs12-encoded stream.
 		/// </summary>
 		/// <remarks>
-		/// Imports the specified certificate.
+		/// Asynchronously imports certificates and keys from a pkcs12-encoded stream.
+		/// </remarks>
+		/// <returns>Ayn asynchronous task context.</returns>
+		/// <param name="stream">The raw certificate and key data in pkcs12 format.</param>
+		/// <param name="password">The password to unlock the stream.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <para><paramref name="stream"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="password"/> is <c>null</c>.</para>
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		public override Task ImportAsync (Stream stream, string password, CancellationToken cancellationToken = default)
+		{
+			Import (stream, password, cancellationToken);
+			return Task.FromResult (true);
+		}
+
+		/// <summary>
+		/// Import a certificate.
+		/// </summary>
+		/// <remarks>
+		/// Imports a certificate.
 		/// </remarks>
 		/// <param name="certificate">The certificate.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="certificate"/> is <c>null</c>.
 		/// </exception>
-		public override void Import (X509Certificate certificate)
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		public override void Import (X509Certificate2 certificate, CancellationToken cancellationToken = default)
 		{
 			if (certificate == null)
 				throw new ArgumentNullException (nameof (certificate));
+
+			cancellationToken.ThrowIfCancellationRequested ();
+
+			var fingerprint = certificate.Thumbprint.ToLowerInvariant ();
+
+			if (fingerprints.Add (fingerprint))
+				certificates.Add (certificate.AsBouncyCastleCertificate ());
+
+			if (certificate.HasPrivateKey && !keys.ContainsKey (fingerprint)) {
+				var privateKey = certificate.GetPrivateKeyAsAsymmetricKeyParameter ();
+				keys.Add (fingerprint, privateKey);
+			}
+		}
+
+		/// <summary>
+		/// Import a certificate.
+		/// </summary>
+		/// <remarks>
+		/// Imports a certificate.
+		/// </remarks>
+		/// <param name="certificate">The certificate.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="certificate"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		public override void Import (X509Certificate certificate, CancellationToken cancellationToken = default)
+		{
+			if (certificate == null)
+				throw new ArgumentNullException (nameof (certificate));
+
+			cancellationToken.ThrowIfCancellationRequested ();
 
 			if (fingerprints.Add (certificate.GetFingerprint ()))
 				certificates.Add (certificate);
 		}
 
 		/// <summary>
-		/// Imports the specified certificate revocation list.
+		/// Import a certificate revocation list.
 		/// </summary>
 		/// <remarks>
-		/// Imports the specified certificate revocation list.
+		/// Imports a certificate revocation list.
 		/// </remarks>
 		/// <param name="crl">The certificate revocation list.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="crl"/> is <c>null</c>.
 		/// </exception>
-		public override void Import (X509Crl crl)
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		public override void Import (X509Crl crl, CancellationToken cancellationToken = default)
 		{
 			if (crl == null)
 				throw new ArgumentNullException (nameof (crl));
+
+			cancellationToken.ThrowIfCancellationRequested ();
 
 			crls.Add (crl);
 		}

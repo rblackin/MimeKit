@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -46,7 +46,7 @@ namespace MimeKit.IO.Filters {
 		#region IMimeFilter implementation
 
 		/// <summary>
-		/// Filters the specified input.
+		/// Filter the specified input.
 		/// </summary>
 		/// <remarks>
 		/// Filters the specified input buffer starting at the given index,
@@ -66,7 +66,7 @@ namespace MimeKit.IO.Filters {
 		}
 
 		/// <summary>
-		/// Filters the specified input, flushing all internally buffered data to the output.
+		/// Filter the specified input, flushing all internally buffered data to the output.
 		/// </summary>
 		/// <remarks>
 		/// Filters the specified input buffer starting at the given index,
@@ -86,7 +86,7 @@ namespace MimeKit.IO.Filters {
 		}
 
 		/// <summary>
-		/// Resets the filter.
+		/// Reset the filter.
 		/// </summary>
 		/// <remarks>
 		/// Resets the filter.

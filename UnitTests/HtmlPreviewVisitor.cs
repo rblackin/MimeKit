@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,14 +24,10 @@
 // THE SOFTWARE.
 //
 
-using System;
-using System.Collections.Generic;
-
 using MimeKit;
 using MimeKit.Text;
 
-namespace UnitTests
-{
+namespace UnitTests {
 	/// <summary>
 	/// Visits a MimeMessage and generates HTML suitable to be rendered by a browser control.
 	/// </summary>
@@ -143,15 +139,12 @@ namespace UnitTests
 				// replace the src attribute with a file:// URL
 				foreach (var attribute in ctx.Attributes) {
 					if (attribute.Id == HtmlAttributeId.Src) {
-						MimePart image;
-						string data;
-
-						if (!TryGetImage (attribute.Value, out image)) {
+						if (!TryGetImage (attribute.Value, out var image)) {
 							htmlWriter.WriteAttribute (attribute);
 							continue;
 						}
 
-						data = GetImageData (image);
+						var data = GetImageData (image);
 
 						htmlWriter.WriteAttributeName (attribute.Name);
 						htmlWriter.WriteAttributeValue (data);
@@ -164,7 +157,7 @@ namespace UnitTests
 
 				// add and/or replace oncontextmenu="return false;"
 				foreach (var attribute in ctx.Attributes) {
-					if (attribute.Name.ToLowerInvariant () == "oncontextmenu")
+					if (attribute.Name.Equals ("oncontextmenu", StringComparison.OrdinalIgnoreCase))
 						continue;
 
 					htmlWriter.WriteAttribute (attribute);
@@ -195,7 +188,7 @@ namespace UnitTests
 				string delsp;
 
 				if (entity.ContentType.Parameters.TryGetValue ("delsp", out delsp))
-					flowed.DeleteSpace = delsp.ToLowerInvariant () == "yes";
+					flowed.DeleteSpace = delsp.Equals ("yes", StringComparison.OrdinalIgnoreCase);
 
 				converter = flowed;
 			} else {

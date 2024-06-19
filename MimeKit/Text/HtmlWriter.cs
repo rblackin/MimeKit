@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -58,10 +58,10 @@ namespace MimeKit.Text {
 		/// </exception>
 		public HtmlWriter (Stream stream, Encoding encoding)
 		{
-			if (stream == null)
+			if (stream is null)
 				throw new ArgumentNullException (nameof (stream));
 
-			if (encoding == null)
+			if (encoding is null)
 				throw new ArgumentNullException (nameof (encoding));
 
 			html = new StreamWriter (stream, encoding, 4096);
@@ -79,14 +79,14 @@ namespace MimeKit.Text {
 		/// </exception>
 		public HtmlWriter (TextWriter output)
 		{
-			if (output == null)
+			if (output is null)
 				throw new ArgumentNullException (nameof (output));
 
 			html = output;
 		}
 
 		/// <summary>
-		/// Releas unmanaged resources and perform other cleanup operations before the
+		/// Release unmanaged resources and perform other cleanup operations before the
 		/// <see cref="HtmlWriter"/> is reclaimed by garbage collection.
 		/// </summary>
 		/// <remarks>
@@ -100,7 +100,7 @@ namespace MimeKit.Text {
 
 		void CheckDisposed ()
 		{
-			if (html == null)
+			if (html is null)
 				throw new ObjectDisposedException ("HtmlWriter");
 		}
 
@@ -117,7 +117,7 @@ namespace MimeKit.Text {
 
 		static void ValidateArguments (char[] buffer, int index, int count)
 		{
-			if (buffer == null)
+			if (buffer is null)
 				throw new ArgumentNullException (nameof (buffer));
 
 			if (index < 0 || index > buffer.Length)
@@ -129,26 +129,26 @@ namespace MimeKit.Text {
 
 		static void ValidateAttributeName (string name)
 		{
-			if (name == null)
+			if (name is null)
 				throw new ArgumentNullException (nameof (name));
 
 			if (name.Length == 0)
 				throw new ArgumentException ("The attribute name cannot be empty.", nameof (name));
 
 			if (!HtmlUtils.IsValidTokenName (name))
-				throw new ArgumentException ("Invalid attribute name.", nameof (name));
+				throw new ArgumentException ($"Invalid attribute name: {name}", nameof (name));
 		}
 
 		static void ValidateTagName (string name)
 		{
-			if (name == null)
+			if (name is null)
 				throw new ArgumentNullException (nameof (name));
 
 			if (name.Length == 0)
 				throw new ArgumentException ("The tag name cannot be empty.", nameof (name));
 
 			if (!HtmlUtils.IsValidTokenName (name))
-				throw new ArgumentException ("Invalid tag name.", nameof (name));
+				throw new ArgumentException ($"Invalid tag name: {name}", nameof (name));
 		}
 
 		void EncodeAttributeName (string name)
@@ -302,7 +302,7 @@ namespace MimeKit.Text {
 			if (id == HtmlAttributeId.Unknown)
 				throw new ArgumentException ("Invalid attribute.", nameof (id));
 
-			if (value == null)
+			if (value is null)
 				throw new ArgumentNullException (nameof (value));
 
 			CheckDisposed ();
@@ -339,7 +339,7 @@ namespace MimeKit.Text {
 		{
 			ValidateAttributeName (name);
 
-			if (value == null)
+			if (value is null)
 				throw new ArgumentNullException (nameof (value));
 
 			CheckDisposed ();
@@ -368,7 +368,7 @@ namespace MimeKit.Text {
 		/// </exception>
 		public void WriteAttribute (HtmlAttribute attribute)
 		{
-			if (attribute == null)
+			if (attribute is null)
 				throw new ArgumentNullException (nameof (attribute));
 
 			EncodeAttributeName (attribute.Name);
@@ -494,12 +494,21 @@ namespace MimeKit.Text {
 		/// </exception>
 		public void WriteAttributeValue (string value)
 		{
-			if (value == null)
+			if (value is null)
 				throw new ArgumentNullException (nameof (value));
 
 			CheckDisposed ();
 
 			EncodeAttributeValue (value);
+		}
+
+		void FlushWriterState ()
+		{
+			if (WriterState != HtmlWriterState.Default) {
+				WriterState = HtmlWriterState.Default;
+				html.Write (empty ? "/>" : ">");
+				empty = false;
+			}
 		}
 
 		/// <summary>
@@ -522,12 +531,9 @@ namespace MimeKit.Text {
 
 			CheckDisposed ();
 
-			if (WriterState != HtmlWriterState.Default) {
-				WriterState = HtmlWriterState.Default;
-				html.Write (empty ? "/>" : ">");
-			}
+			FlushWriterState ();
 
-			html.Write (string.Format ("<{0}", id.ToHtmlTagName ()));
+			html.Write ($"<{id.ToHtmlTagName ()}");
 			WriterState = HtmlWriterState.Tag;
 			empty = true;
 		}
@@ -553,12 +559,9 @@ namespace MimeKit.Text {
 			ValidateTagName (name);
 			CheckDisposed ();
 
-			if (WriterState != HtmlWriterState.Default) {
-				WriterState = HtmlWriterState.Default;
-				html.Write (empty ? "/>" : ">");
-			}
+			FlushWriterState ();
 
-			html.Write (string.Format ("<{0}", name));
+			html.Write ($"<{name}");
 			WriterState = HtmlWriterState.Tag;
 			empty = true;
 		}
@@ -586,13 +589,9 @@ namespace MimeKit.Text {
 
 			CheckDisposed ();
 
-			if (WriterState != HtmlWriterState.Default) {
-				WriterState = HtmlWriterState.Default;
-				html.Write (empty ? "/>" : ">");
-				empty = false;
-			}
+			FlushWriterState ();
 
-			html.Write (string.Format ("</{0}>", id.ToHtmlTagName ()));
+			html.Write ($"</{id.ToHtmlTagName ()}>");
 		}
 
 		/// <summary>
@@ -616,13 +615,9 @@ namespace MimeKit.Text {
 			ValidateTagName (name);
 			CheckDisposed ();
 
-			if (WriterState != HtmlWriterState.Default) {
-				WriterState = HtmlWriterState.Default;
-				html.Write (empty ? "/>" : ">");
-				empty = false;
-			}
+			FlushWriterState ();
 
-			html.Write (string.Format ("</{0}>", name));
+			html.Write ($"</{name}>");
 		}
 
 		/// <summary>
@@ -652,11 +647,7 @@ namespace MimeKit.Text {
 			ValidateArguments (buffer, index, count);
 			CheckDisposed ();
 
-			if (WriterState != HtmlWriterState.Default) {
-				WriterState = HtmlWriterState.Default;
-				html.Write (empty ? "/>" : ">");
-				empty = false;
-			}
+			FlushWriterState ();
 
 			html.Write (buffer, index, count);
 		}
@@ -676,16 +667,12 @@ namespace MimeKit.Text {
 		/// </exception>
 		public void WriteMarkupText (string value)
 		{
-			if (value == null)
+			if (value is null)
 				throw new ArgumentNullException (nameof (value));
 
 			CheckDisposed ();
 
-			if (WriterState != HtmlWriterState.Default) {
-				WriterState = HtmlWriterState.Default;
-				html.Write (empty ? "/>" : ">");
-				empty = false;
-			}
+			FlushWriterState ();
 
 			html.Write (value);
 		}
@@ -713,12 +700,9 @@ namespace MimeKit.Text {
 
 			CheckDisposed ();
 
-			if (WriterState != HtmlWriterState.Default) {
-				html.Write (empty ? "/>" : ">");
-				empty = false;
-			}
+			FlushWriterState ();
 
-			html.Write (string.Format ("<{0}", id.ToHtmlTagName ()));
+			html.Write ($"<{id.ToHtmlTagName ()}");
 			WriterState = HtmlWriterState.Tag;
 		}
 
@@ -743,12 +727,9 @@ namespace MimeKit.Text {
 			ValidateTagName (name);
 			CheckDisposed ();
 
-			if (WriterState != HtmlWriterState.Default) {
-				html.Write (empty ? "/>" : ">");
-				empty = false;
-			}
+			FlushWriterState ();
 
-			html.Write (string.Format ("<{0}", name));
+			html.Write ($"<{name}");
 			WriterState = HtmlWriterState.Tag;
 		}
 
@@ -779,11 +760,7 @@ namespace MimeKit.Text {
 			ValidateArguments (buffer, index, count);
 			CheckDisposed ();
 
-			if (WriterState != HtmlWriterState.Default) {
-				WriterState = HtmlWriterState.Default;
-				html.Write (empty ? "/>" : ">");
-				empty = false;
-			}
+			FlushWriterState ();
 
 			if (count > 0)
 				HtmlUtils.HtmlEncode (html, buffer, index, count);
@@ -807,16 +784,12 @@ namespace MimeKit.Text {
 		/// </exception>
 		public void WriteText (string value)
 		{
-			if (value == null)
+			if (value is null)
 				throw new ArgumentNullException (nameof (value));
 
 			CheckDisposed ();
 
-			if (WriterState != HtmlWriterState.Default) {
-				WriterState = HtmlWriterState.Default;
-				html.Write (empty ? "/>" : ">");
-				empty = false;
-			}
+			FlushWriterState ();
 
 			if (value.Length > 0)
 				HtmlUtils.HtmlEncode (html, value.ToCharArray (), 0, value.Length);
@@ -859,16 +832,12 @@ namespace MimeKit.Text {
 		/// </exception>
 		public void WriteToken (HtmlToken token)
 		{
-			if (token == null)
+			if (token is null)
 				throw new ArgumentNullException (nameof (token));
 
 			CheckDisposed ();
 
-			if (WriterState != HtmlWriterState.Default) {
-				WriterState = HtmlWriterState.Default;
-				html.Write (empty ? "/>" : ">");
-				empty = false;
-			}
+			FlushWriterState ();
 
 			token.WriteTo (html);
 		}
@@ -886,17 +855,13 @@ namespace MimeKit.Text {
 		{
 			CheckDisposed ();
 
-			if (WriterState != HtmlWriterState.Default) {
-				WriterState = HtmlWriterState.Default;
-				html.Write (empty ? "/>" : ">");
-				empty = false;
-			}
+			FlushWriterState ();
 
 			html.Flush ();
 		}
 
 		/// <summary>
-		/// Releases the unmanaged resources used by the <see cref="HtmlWriter"/> and
+		/// Release the unmanaged resources used by the <see cref="HtmlWriter"/> and
 		/// optionally releases the managed resources.
 		/// </summary>
 		/// <remarks>
@@ -912,7 +877,7 @@ namespace MimeKit.Text {
 		}
 
 		/// <summary>
-		/// Releases all resource used by the <see cref="HtmlWriter"/> object.
+		/// Release all resource used by the <see cref="HtmlWriter"/> object.
 		/// </summary>
 		/// <remarks>Call <see cref="Dispose()"/> when you are finished using the <see cref="HtmlWriter"/>. The
 		/// <see cref="Dispose()"/> method leaves the <see cref="HtmlWriter"/> in an unusable state. After calling

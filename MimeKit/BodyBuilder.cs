@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -127,12 +127,14 @@ namespace MimeKit {
 			MimeEntity body = null;
 
 			if (TextBody != null) {
-				var text = new TextPart ("plain");
-				text.Text = TextBody;
+				var text = new TextPart ("plain") {
+					Text = TextBody
+				};
 
 				if (HtmlBody != null) {
-					alternative = new MultipartAlternative ();
-					alternative.Add (text);
+					alternative = new MultipartAlternative {
+						text
+					};
 					body = alternative;
 				} else {
 					body = text;
@@ -140,10 +142,10 @@ namespace MimeKit {
 			}
 
 			if (HtmlBody != null) {
-				var text = new TextPart ("html");
+				var text = new TextPart ("html") {
+					Text = HtmlBody
+				};
 				MimeEntity html;
-
-				text.Text = HtmlBody;
 
 				if (LinkedResources.Count > 0) {
 					var related = new MultipartRelated {
@@ -165,7 +167,7 @@ namespace MimeKit {
 			}
 
 			if (Attachments.Count > 0) {
-				if (body == null && Attachments.Count == 1)
+				if (body is null && Attachments.Count == 1)
 					return Attachments[0];
 
 				var mixed = new Multipart ("mixed");

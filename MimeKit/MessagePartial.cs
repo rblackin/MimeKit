@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -27,6 +27,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Globalization;
 using System.Collections.Generic;
 
 using MimeKit.IO;
@@ -42,7 +43,7 @@ namespace MimeKit {
 	/// limitations (for example, some SMTP servers limit have a maximum message
 	/// size that they will accept).</para>
 	/// </remarks>
-	public class MessagePartial : MimePart
+	public class MessagePartial : MimePart, IMessagePartial
 	{
 		/// <summary>
 		/// Initialize a new instance of the <see cref="MessagePartial"/> class.
@@ -82,7 +83,7 @@ namespace MimeKit {
 		/// </exception>
 		public MessagePartial (string id, int number, int total) : base ("message", "partial")
 		{
-			if (id == null)
+			if (id is null)
 				throw new ArgumentNullException (nameof (id));
 
 			if (number < 1)
@@ -92,12 +93,17 @@ namespace MimeKit {
 				throw new ArgumentOutOfRangeException (nameof (total));
 
 			ContentType.Parameters.Add (new Parameter ("id", id));
-			ContentType.Parameters.Add (new Parameter ("number", number.ToString ()));
-			ContentType.Parameters.Add (new Parameter ("total", total.ToString ()));
+			ContentType.Parameters.Add (new Parameter ("number", number.ToString (CultureInfo.InvariantCulture)));
+			ContentType.Parameters.Add (new Parameter ("total", total.ToString (CultureInfo.InvariantCulture)));
+		}
+
+		void CheckDisposed ()
+		{
+			CheckDisposed (nameof (MessagePartial));
 		}
 
 		/// <summary>
-		/// Gets the "id" parameter of the Content-Type header.
+		/// Get the "id" parameter of the Content-Type header.
 		/// </summary>
 		/// <remarks>
 		/// The "id" parameter is a unique identifier used to match the parts together.
@@ -108,7 +114,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets the "number" parameter of the Content-Type header.
+		/// Get the "number" parameter of the Content-Type header.
 		/// </summary>
 		/// <remarks>
 		/// The "number" parameter is the sequential (1-based) index of the partial message fragment.
@@ -117,9 +123,8 @@ namespace MimeKit {
 		public int? Number {
 			get {
 				var text = ContentType.Parameters["number"];
-				int number;
 
-				if (text == null || !int.TryParse (text, out number))
+				if (text is null || !int.TryParse (text, NumberStyles.AllowLeadingWhite | NumberStyles.AllowTrailingWhite, CultureInfo.InvariantCulture, out int number))
 					return null;
 
 				return number;
@@ -127,7 +132,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets the "total" parameter of the Content-Type header.
+		/// Get the "total" parameter of the Content-Type header.
 		/// </summary>
 		/// <remarks>
 		/// The "total" parameter is the total number of pieces that make up the complete message.
@@ -136,9 +141,8 @@ namespace MimeKit {
 		public int? Total {
 			get {
 				var text = ContentType.Parameters["total"];
-				int total;
 
-				if (text == null || !int.TryParse (text, out total))
+				if (text is null || !int.TryParse (text, NumberStyles.AllowLeadingWhite | NumberStyles.AllowTrailingWhite, CultureInfo.InvariantCulture, out int total))
 					return null;
 
 				return total;
@@ -160,10 +164,15 @@ namespace MimeKit {
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="visitor"/> is <c>null</c>.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MessagePartial"/> has been disposed.
+		/// </exception>
 		public override void Accept (MimeVisitor visitor)
 		{
-			if (visitor == null)
+			if (visitor is null)
 				throw new ArgumentNullException (nameof (visitor));
+
+			CheckDisposed ();
 
 			visitor.VisitMessagePartial (this);
 		}
@@ -176,11 +185,13 @@ namespace MimeKit {
 			foreach (var header in message.Headers)
 				clone.Headers.Add (header.Clone ());
 
+			clone.Headers.Replace (HeaderId.MessageId, "<" + MimeUtils.GenerateMessageId () + ">");
+
 			return clone;
 		}
 
 		/// <summary>
-		/// Splits the specified message into multiple messages.
+		/// Split a message into multiple messages.
 		/// </summary>
 		/// <remarks>
 		/// Splits the specified message into multiple messages, each with a
@@ -195,15 +206,18 @@ namespace MimeKit {
 		/// <exception cref="System.ArgumentOutOfRangeException">
 		/// <paramref name="maxSize"/> is less than <c>1</c>.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// <paramref name="message"/> has been disposed.
+		/// </exception>
 		public static IEnumerable<MimeMessage> Split (MimeMessage message, int maxSize)
 		{
-			if (message == null)
+			if (message is null)
 				throw new ArgumentNullException (nameof (message));
 
 			if (maxSize < 1)
 				throw new ArgumentOutOfRangeException (nameof (maxSize));
 
-			var options = FormatOptions.CloneDefault ();
+			var options = FormatOptions.Default.Clone ();
 			foreach (HeaderId id in Enum.GetValues (typeof (HeaderId))) {
 				switch (id) {
 				case HeaderId.Subject:
@@ -247,11 +261,7 @@ namespace MimeKit {
 			}
 
 			var streams = new List<Stream> ();
-#if !NETSTANDARD1_3 && !NETSTANDARD1_6
 			var buf = memory.GetBuffer ();
-#else
-			var buf = memory.ToArray ();
-#endif
 			long startIndex = 0;
 
 			while (startIndex < memory.Length) {
@@ -274,18 +284,25 @@ namespace MimeKit {
 			}
 
 			var msgid = message.MessageId ?? MimeUtils.GenerateMessageId ();
-			int number = 1;
 
-			foreach (var stream in streams) {
-				var part = new MessagePartial (msgid, number++, streams.Count) {
-					Content = new MimeContent (stream)
+			for (int i = 0; i < streams.Count; i++) {
+				MimeMessage msg;
+
+				try {
+					msg = CloneMessage (message);
+				} catch {
+					while (i < streams.Count)
+						streams[i++].Dispose ();
+					throw;
+				}
+
+				var partial = new MessagePartial (msgid, i + 1, streams.Count) {
+					Content = new MimeContent (streams[i])
 				};
 
-				var submessage = CloneMessage (message);
-				submessage.MessageId = MimeUtils.GenerateMessageId ();
-				submessage.Body = part;
+				msg.Body = partial;
 
-				yield return submessage;
+				yield return msg;
 			}
 
 			yield break;
@@ -293,8 +310,11 @@ namespace MimeKit {
 
 		static int PartialCompare (MessagePartial partial1, MessagePartial partial2)
 		{
-			if (!partial1.Number.HasValue || !partial2.Number.HasValue || partial1.Id != partial2.Id)
+			if (partial1.Id != partial2.Id)
 				throw new ArgumentException ("Partial messages have mismatching identifiers.", "partials");
+
+			if (!partial1.Number.HasValue || !partial2.Number.HasValue)
+				throw new ArgumentException ("One or more partial messages have missing numbers.", "partials");
 
 			return partial1.Number.Value - partial2.Number.Value;
 		}
@@ -362,17 +382,48 @@ namespace MimeKit {
 			}
 		}
 
-		static MimeMessage Join (ParserOptions options, MimeMessage message, IEnumerable<MessagePartial> partials, bool allowNullMessage)
+		/// <summary>
+		/// Join the specified message/partial parts into the complete message.
+		/// </summary>
+		/// <remarks>
+		/// Combines all of the message/partial fragments into its original,
+		/// complete, message.
+		/// </remarks>
+		/// <returns>The re-combined message.</returns>
+		/// <param name="options">The parser options to use.</param>
+		/// <param name="message">The message that contains the first `message/partial` part.</param>
+		/// <param name="partials">The list of partial message parts.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <para><paramref name="options"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="message"/>is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="partials"/>is <c>null</c>.</para>
+		/// </exception>
+		/// <exception cref="System.ArgumentException">
+		/// <para>The last partial does not have a "total" parameter in the Content-Type header.</para>
+		/// <para>-or-</para>
+		/// <para>The number of partials provided does not match the expected count.</para>
+		/// <para>-or-</para>
+		/// <para>One or more partials is missing.</para>
+		/// </exception>
+		/// <exception cref="System.InvalidOperationException">
+		/// <para>One or more <paramref name="partials"/> has a mismatching id parameter in the Content-Type header.</para>
+		/// <para>-or-</para>
+		/// <para>One or more <paramref name="partials"/> has a missing number parameter in the Content-Type header.</para>
+		/// </exception>
+		public static MimeMessage Join (ParserOptions options, MimeMessage message, IEnumerable<MessagePartial> partials)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (!allowNullMessage && message == null)
+			if (message is null)
 				throw new ArgumentNullException (nameof (message));
 
-			if (partials == null)
+			if (partials is null)
 				throw new ArgumentNullException (nameof (partials));
 
+			// FIXME: the partials argument should be changed to be IReadOnlyList<MessagePartial> for MimeKit v4.0.
 			var parts = partials.ToList ();
 
 			if (parts.Count == 0)
@@ -413,37 +464,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Joins the specified message/partial parts into the complete message.
-		/// </summary>
-		/// <remarks>
-		/// Combines all of the message/partial fragments into its original,
-		/// complete, message.
-		/// </remarks>
-		/// <returns>The re-combined message.</returns>
-		/// <param name="options">The parser options to use.</param>
-		/// <param name="message">The message that contains the first `message/partial` part.</param>
-		/// <param name="partials">The list of partial message parts.</param>
-		/// <exception cref="System.ArgumentNullException">
-		/// <para><paramref name="options"/> is <c>null</c>.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="message"/>is <c>null</c>.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="partials"/>is <c>null</c>.</para>
-		/// </exception>
-		/// <exception cref="System.ArgumentException">
-		/// <para>The last partial does not have a Total.</para>
-		/// <para>-or-</para>
-		/// <para>The number of partials provided does not match the expected count.</para>
-		/// <para>-or-</para>
-		/// <para>One or more partials is missing.</para>
-		/// </exception>
-		public static MimeMessage Join (ParserOptions options, MimeMessage message, IEnumerable<MessagePartial> partials)
-		{
-			return Join (options, message, partials, false);
-		}
-
-		/// <summary>
-		/// Joins the specified message/partial parts into the complete message.
+		/// Join the specified message/partial parts into the complete message.
 		/// </summary>
 		/// <remarks>
 		/// Combines all of the message/partial fragments into its original,
@@ -457,55 +478,22 @@ namespace MimeKit {
 		/// <para>-or-</para>
 		/// <para><paramref name="partials"/>is <c>null</c>.</para>
 		/// </exception>
-		public static MimeMessage Join (MimeMessage message, IEnumerable<MessagePartial> partials)
-		{
-			return Join (ParserOptions.Default, message, partials, false);
-		}
-
-		/// <summary>
-		/// Joins the specified message/partial parts into the complete message.
-		/// </summary>
-		/// <remarks>
-		/// Combines all of the message/partial fragments into its original,
-		/// complete, message.
-		/// </remarks>
-		/// <returns>The re-combined message.</returns>
-		/// <param name="options">The parser options to use.</param>
-		/// <param name="partials">The list of partial message parts.</param>
-		/// <exception cref="System.ArgumentNullException">
-		/// <para><paramref name="options"/> is <c>null</c>.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="partials"/>is <c>null</c>.</para>
-		/// </exception>
 		/// <exception cref="System.ArgumentException">
-		/// <para>The last partial does not have a Total.</para>
+		/// <para>The last partial does not have a "total" parameter in the Content-Type header.</para>
 		/// <para>-or-</para>
 		/// <para>The number of partials provided does not match the expected count.</para>
 		/// <para>-or-</para>
 		/// <para>One or more partials is missing.</para>
 		/// </exception>
-		[Obsolete ("Use MessagePartial.Join (ParserOptions, MimeMessage, IEnumerable<MessagePartial>) instead.")]
-		public static MimeMessage Join (ParserOptions options, IEnumerable<MessagePartial> partials)
-		{
-			return Join (options, null, partials, true);
-		}
-
-		/// <summary>
-		/// Joins the specified message/partial parts into the complete message.
-		/// </summary>
-		/// <remarks>
-		/// Combines all of the message/partial fragments into its original,
-		/// complete, message.
-		/// </remarks>
-		/// <returns>The re-combined message.</returns>
-		/// <param name="partials">The list of partial message parts.</param>
-		/// <exception cref="System.ArgumentNullException">
-		/// <paramref name="partials"/>is <c>null</c>.
+		/// <exception cref="System.InvalidOperationException">
+		/// <para>One or more <paramref name="partials"/> has a mismatching id parameter in the Content-Type header.</para>
+		/// <para>-or-</para>
+		/// <para>One or more <paramref name="partials"/> has a missing number parameter in the Content-Type header.</para>
 		/// </exception>
-		[Obsolete ("Use MessagePartial.Join (MimeMessage, IEnumerable<MessagePartial>) instead.")]
-		public static MimeMessage Join (IEnumerable<MessagePartial> partials)
+		public static MimeMessage Join (MimeMessage message, IEnumerable<MessagePartial> partials)
 		{
-			return Join (ParserOptions.Default, null, partials, true);
+			// FIXME: the partials argument should be changed to be IReadOnlyList<MessagePartial> for MimeKit v4.0.
+			return Join (ParserOptions.Default, message, partials);
 		}
 	}
 }

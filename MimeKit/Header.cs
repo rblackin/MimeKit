@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -27,6 +27,7 @@
 using System;
 using System.Text;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 using MimeKit.Utils;
 using MimeKit.Cryptography;
@@ -41,6 +42,7 @@ namespace MimeKit {
 	public class Header
 	{
 		internal static readonly byte[] Colon = { (byte) ':' };
+		static readonly char[] WhiteSpace = { ' ', '\t', '\r', '\n' };
 		internal readonly ParserOptions Options;
 
 		// cached FormatOptions that change the way the header is formatted
@@ -76,13 +78,13 @@ namespace MimeKit {
 		/// </exception>
 		public Header (Encoding encoding, HeaderId id, string value)
 		{
-			if (encoding == null)
+			if (encoding is null)
 				throw new ArgumentNullException (nameof (encoding));
 
 			if (id == HeaderId.Unknown)
 				throw new ArgumentOutOfRangeException (nameof (id));
 
-			if (value == null)
+			if (value is null)
 				throw new ArgumentNullException (nameof (value));
 
 			Options = ParserOptions.Default.Clone ();
@@ -118,13 +120,13 @@ namespace MimeKit {
 		/// </exception>
 		public Header (string charset, HeaderId id, string value)
 		{
-			if (charset == null)
+			if (charset is null)
 				throw new ArgumentNullException (nameof (charset));
 
 			if (id == HeaderId.Unknown)
 				throw new ArgumentOutOfRangeException (nameof (id));
 
-			if (value == null)
+			if (value is null)
 				throw new ArgumentNullException (nameof (value));
 
 			var encoding = CharsetUtils.GetEncoding (charset);
@@ -155,6 +157,20 @@ namespace MimeKit {
 		{
 		}
 
+		static void ValidateFieldName (string field)
+		{
+			if (field is null)
+				throw new ArgumentNullException (nameof (field));
+
+			if (field.Length == 0)
+				throw new ArgumentException ("Header field names are not allowed to be empty.", nameof (field));
+
+			for (int i = 0; i < field.Length; i++) {
+				if (field[i] >= 127 || !IsFieldText ((byte) field[i]))
+					throw new ArgumentException ("Illegal characters in header field name.", nameof (field));
+			}
+		}
+
 		/// <summary>
 		/// Initialize a new instance of the <see cref="Header"/> class.
 		/// </summary>
@@ -179,21 +195,12 @@ namespace MimeKit {
 		/// </exception>
 		public Header (Encoding encoding, string field, string value)
 		{
-			if (encoding == null)
+			if (encoding is null)
 				throw new ArgumentNullException (nameof (encoding));
 
-			if (field == null)
-				throw new ArgumentNullException (nameof (field));
+			ValidateFieldName (field);
 
-			if (field.Length == 0)
-				throw new ArgumentException ("Header field names are not allowed to be empty.", nameof (field));
-
-			for (int i = 0; i < field.Length; i++) {
-				if (field[i] >= 127 || !IsAsciiAtom ((byte) field[i]))
-					throw new ArgumentException ("Illegal characters in header field name.", nameof (field));
-			}
-
-			if (value == null)
+			if (value is null)
 				throw new ArgumentNullException (nameof (value));
 
 			Options = ParserOptions.Default.Clone ();
@@ -231,21 +238,12 @@ namespace MimeKit {
 		/// </exception>
 		public Header (string charset, string field, string value)
 		{
-			if (charset == null)
+			if (charset is null)
 				throw new ArgumentNullException (nameof (charset));
 
-			if (field == null)
-				throw new ArgumentNullException (nameof (field));
+			ValidateFieldName (field);
 
-			if (field.Length == 0)
-				throw new ArgumentException ("Header field names are not allowed to be empty.", nameof (field));
-
-			for (int i = 0; i < field.Length; i++) {
-				if (field[i] >= 127 || !IsAsciiAtom ((byte) field[i]))
-					throw new ArgumentException ("Illegal characters in header field name.", nameof (field));
-			}
-
-			if (value == null)
+			if (value is null)
 				throw new ArgumentNullException (nameof (value));
 
 			var encoding = CharsetUtils.GetEncoding (charset);
@@ -309,11 +307,51 @@ namespace MimeKit {
 		/// </remarks>
 		/// <param name="options">The parser options used.</param>
 		/// <param name="field">The raw header field.</param>
+		/// <param name="fieldNameLength">The length of the field name (not including trailing whitespace).</param>
 		/// <param name="value">The raw value of the header.</param>
-		/// <param name="invalid"><c>true</c> if the header field is invalid; othereise, <c>false</c>.</param>
+		/// <param name="invalid"><c>true</c> if the header field is invalid; otherwise, <c>false</c>.</param>
+#if NET5_0_OR_GREATER
+		[System.Runtime.CompilerServices.SkipLocalsInit]
+#endif
+		internal protected Header (ParserOptions options, byte[] field, int fieldNameLength, byte[] value, bool invalid)
+		{
+			Span<char> chars = fieldNameLength <= 32
+				? stackalloc char[32]
+				: new char[fieldNameLength];
+
+			for (int i = 0; i < fieldNameLength; i++)
+				chars[i] = (char) field[i];
+
+			Options = options;
+			rawField = field;
+			rawValue = value;
+
+			Field = chars.Slice (0, fieldNameLength).ToString ();
+			Id = Field.ToHeaderId ();
+			IsInvalid = invalid;
+		}
+
+		/// <summary>
+		/// Initialize a new instance of the <see cref="Header"/> class.
+		/// </summary>
+		/// <remarks>
+		/// <para>Creates a new message or entity header with the specified raw values.</para>
+		/// <para>This constructor is used by the
+		/// <a href="Overload_MimeKit_Header_TryParse.htm">TryParse</a> methods.</para>
+		/// </remarks>
+		/// <param name="options">The parser options used.</param>
+		/// <param name="field">The raw header field.</param>
+		/// <param name="value">The raw value of the header.</param>
+		/// <param name="invalid"><c>true</c> if the header field is invalid; otherwise, <c>false</c>.</param>
+#if NET5_0_OR_GREATER
+		[System.Runtime.CompilerServices.SkipLocalsInit]
+#endif
 		internal protected Header (ParserOptions options, byte[] field, byte[] value, bool invalid)
 		{
-			var chars = new char[field.Length];
+			Span<char> chars = field.Length <= 32
+				? stackalloc char[32]
+				: new char[field.Length];
+
 			int count = 0;
 
 			while (count < field.Length && (invalid || !field[count].IsBlank ())) {
@@ -325,7 +363,7 @@ namespace MimeKit {
 			rawField = field;
 			rawValue = value;
 
-			Field = new string (chars, 0, count);
+			Field = chars.Slice (0, count).ToString ();
 			Id = Field.ToHeaderId ();
 			IsInvalid = invalid;
 		}
@@ -360,19 +398,17 @@ namespace MimeKit {
 		/// <returns>A copy of the header with its current state.</returns>
 		public Header Clone ()
 		{
-			var header = new Header (Options, Id, Field, rawField, rawValue) {
+			return new Header (Options, Id, Field, rawField, rawValue) {
 				explicitRawValue = explicitRawValue,
-				IsInvalid = IsInvalid
+				IsInvalid = IsInvalid,
+
+				// if the textValue has already been calculated, set it on the cloned header as well.
+				textValue = textValue
 			};
-
-			// if the textValue has already been calculated, set it on the cloned header as well.
-			header.textValue = textValue;
-
-			return header;
 		}
 
 		/// <summary>
-		/// Gets the stream offset of the beginning of the header.
+		/// Get the stream offset of the beginning of the header.
 		/// </summary>
 		/// <remarks>
 		/// If the offset is set, it refers to the byte offset where it
@@ -384,7 +420,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets the name of the header field.
+		/// Get the name of the header field.
 		/// </summary>
 		/// <remarks>
 		/// Represents the field name of the header.
@@ -395,7 +431,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets the header identifier.
+		/// Get the header identifier.
 		/// </summary>
 		/// <remarks>
 		/// This property is mainly used for switch-statements for performance reasons.
@@ -410,7 +446,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets the raw field name of the header.
+		/// Get the raw field name of the header.
 		/// </summary>
 		/// <remarks>
 		/// Contains the raw field name of the header.
@@ -421,7 +457,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets the raw value of the header.
+		/// Get the raw value of the header.
 		/// </summary>
 		/// <remarks>
 		/// Contains the raw value of the header, before any decoding or charset conversion.
@@ -432,7 +468,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets or sets the header value.
+		/// Get or sets the header value.
 		/// </summary>
 		/// <remarks>
 		/// Represents the decoded header value and is suitable for displaying to the user.
@@ -443,8 +479,7 @@ namespace MimeKit {
 		/// </exception>
 		public string Value {
 			get {
-				if (textValue == null)
-					textValue = Unfold (Rfc2047.DecodeText (Options, rawValue));
+				textValue ??= Unfold (Rfc2047.DecodeText (Options, rawValue));
 
 				return textValue;
 			}
@@ -454,7 +489,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets the header value using the specified character encoding.
+		/// Get the header value using the specified character encoding.
 		/// </summary>
 		/// <remarks>
 		/// <para>If the raw header value does not properly encode non-ASCII text, the decoder
@@ -468,7 +503,7 @@ namespace MimeKit {
 		/// <param name="encoding">The character encoding to use as a fallback.</param>
 		public string GetValue (Encoding encoding)
 		{
-			if (encoding == null)
+			if (encoding is null)
 				throw new ArgumentNullException (nameof (encoding));
 
 			var options = Options.Clone ();
@@ -478,7 +513,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets the header value using the specified charset.
+		/// Get the header value using the specified charset.
 		/// </summary>
 		/// <remarks>
 		/// <para>If the raw header value does not properly encode non-ASCII text, the decoder
@@ -492,7 +527,7 @@ namespace MimeKit {
 		/// <param name="charset">The charset to use as a fallback.</param>
 		public string GetValue (string charset)
 		{
-			if (charset == null)
+			if (charset is null)
 				throw new ArgumentNullException (nameof (charset));
 
 			var encoding = CharsetUtils.GetEncoding (charset);
@@ -500,14 +535,30 @@ namespace MimeKit {
 			return GetValue (encoding);
 		}
 
-		static byte[] EncodeAddressHeader (ParserOptions options, FormatOptions format, Encoding encoding, string field, string value)
+		static byte[] ReformatAddressHeader (ParserOptions options, FormatOptions format, Encoding encoding, string field, byte[] rawValue)
 		{
+			if (!InternetAddressList.TryParse (options, rawValue, 0, rawValue.Length, out var list))
+				return rawValue;
+
 			var encoded = new StringBuilder (" ");
 			int lineLength = field.Length + 2;
-			InternetAddressList list;
 
-			if (!InternetAddressList.TryParse (options, value, out list))
-				return (byte[]) format.NewLineBytes.Clone ();
+			list.Encode (format, encoded, true, ref lineLength);
+			encoded.Append (format.NewLine);
+
+			if (format.International)
+				return Encoding.UTF8.GetBytes (encoded.ToString ());
+
+			return Encoding.ASCII.GetBytes (encoded.ToString ());
+		}
+
+		static byte[] EncodeAddressHeader (ParserOptions options, FormatOptions format, Encoding encoding, string field, string value)
+		{
+			if (!InternetAddressList.TryParse (options, value, out var list))
+				return EncodeUnstructuredHeader (options, format, encoding, field, value);
+
+			var encoded = new StringBuilder (" ");
+			int lineLength = field.Length + 2;
 
 			list.Encode (format, encoded, true, ref lineLength);
 			encoded.Append (format.NewLine);
@@ -552,21 +603,18 @@ namespace MimeKit {
 				index++;
 		}
 
-		static readonly byte[] ReceivedAddrSpecSentinels = { (byte) '>', (byte) ';' };
-		static readonly byte[] ReceivedMessageIdSentinels = { (byte) '>' };
+		static ReadOnlySpan<byte> ReceivedAddrSpecSentinels => new[] { (byte) '>', (byte) ';' };
+		static ReadOnlySpan<byte> ReceivedMessageIdSentinels => new[] { (byte) '>' };
 
 		static void ReceivedTokenSkipAddress (byte[] text, ref int index)
 		{
-			string addrspec;
-			int at;
-
 			if (!ParseUtils.SkipCommentsAndWhiteSpace (text, ref index, text.Length, false) || index >= text.Length)
 				return;
 
 			if (text[index] == (byte) '<')
 				index++;
 
-			InternetAddress.TryParseAddrspec (text, ref index, text.Length, ReceivedAddrSpecSentinels, false, out addrspec, out at);
+			InternetAddress.TryParseAddrspec (text, ref index, text.Length, ReceivedAddrSpecSentinels, RfcComplianceMode.Strict, false, out _, out _);
 
 			if (index < text.Length && text[index] == (byte) '>')
 				index++;
@@ -574,16 +622,13 @@ namespace MimeKit {
 
 		static void ReceivedTokenSkipMessageId (byte[] text, ref int index)
 		{
-			string addrspec;
-			int at;
-
 			if (!ParseUtils.SkipCommentsAndWhiteSpace (text, ref index, text.Length, false) || index >= text.Length)
 				return;
 
 			if (text[index] == (byte) '<') {
 				index++;
 
-				InternetAddress.TryParseAddrspec (text, ref index, text.Length, ReceivedMessageIdSentinels, false, out addrspec, out at);
+				InternetAddress.TryParseAddrspec (text, ref index, text.Length, ReceivedMessageIdSentinels, RfcComplianceMode.Strict, false, out _, out _);
 
 				if (index < text.Length && text[index] == (byte) '>')
 					index++;
@@ -592,7 +637,7 @@ namespace MimeKit {
 			}
 		}
 
-		struct ReceivedToken {
+		readonly struct ReceivedToken {
 			public readonly ReceivedTokenSkipValueFunc Skip;
 			public readonly string Atom;
 
@@ -628,7 +673,7 @@ namespace MimeKit {
 		{
 			var tokens = new List<ReceivedTokenValue> ();
 			var rawValue = encoding.GetBytes (value);
-			var encoded = new StringBuilder ();
+			var encoded = new ValueStringBuilder (rawValue.Length);
 			int lineLength = field.Length + 1;
 			bool date = false;
 			int index = 0;
@@ -664,7 +709,7 @@ namespace MimeKit {
 					}
 				}
 
-				if (token == null) {
+				if (token is null) {
 					if (ParseUtils.SkipCommentsAndWhiteSpace (rawValue, ref index, rawValue.Length, false)) {
 						while (index < rawValue.Length && !rawValue[index].IsWhitespace ())
 							index++;
@@ -722,7 +767,7 @@ namespace MimeKit {
 			return encoding.GetBytes (encoded.ToString ());
 		}
 
-		static void EncodeDkimLongValue (FormatOptions format, StringBuilder encoded, ref int lineLength, string value)
+		static void EncodeDkimLongValue (FormatOptions format, ref ValueStringBuilder encoded, ref int lineLength, ReadOnlySpan<char> value)
 		{
 			int startIndex = 0;
 
@@ -730,7 +775,7 @@ namespace MimeKit {
 				int lineLeft = format.MaxLineLength - lineLength;
 				int index = Math.Min (startIndex + lineLeft, value.Length);
 
-				encoded.Append (value.Substring (startIndex, index - startIndex));
+				encoded.Append (value.Slice (startIndex, index - startIndex));
 				lineLength += (index - startIndex);
 
 				if (index == value.Length)
@@ -744,47 +789,49 @@ namespace MimeKit {
 			} while (true);
 		}
 
-		static void EncodeDkimHeaderList (FormatOptions format, StringBuilder encoded, ref int lineLength, string value, char delim)
+		static void EncodeDkimHeaderList (FormatOptions format, ref ValueStringBuilder encoded, ref int lineLength, ReadOnlySpan<char> value, char delim)
 		{
-			var tokens = value.Split (delim);
+			int i = 0;
 
-			for (int i = 0; i < tokens.Length; i++) {
+			foreach (var token in value.Tokenize (delim)) {
 				if (i > 0) {
 					encoded.Append (delim);
 					lineLength++;
 				}
 
-				if (lineLength + tokens[i].Length + 1 > format.MaxLineLength) {
+				if (lineLength + token.Length + 1 > format.MaxLineLength) {
 					encoded.Append (format.NewLine);
 					encoded.Append ('\t');
 					lineLength = 1;
 
-					if (tokens[i].Length + 1 > format.MaxLineLength) {
-						EncodeDkimLongValue (format, encoded, ref lineLength, tokens[i]);
+					if (token.Length + 1 > format.MaxLineLength) {
+						EncodeDkimLongValue (format, ref encoded, ref lineLength, token);
 					} else {
-						lineLength += tokens[i].Length;
-						encoded.Append (tokens[i]);
+						lineLength += token.Length;
+						encoded.Append (token);
 					}
 				} else {
-					lineLength += tokens[i].Length;
-					encoded.Append (tokens[i]);
+					lineLength += token.Length;
+					encoded.Append (token);
 				}
+
+				i++;
 			}
 		}
 
 		static byte[] EncodeDkimOrArcSignatureHeader (ParserOptions options, FormatOptions format, Encoding encoding, string field, string value)
 		{
-			var encoded = new StringBuilder ();
+			var encoded = new ValueStringBuilder (value.Length);
 			int lineLength = field.Length + 1;
-			var token = new StringBuilder ();
 			int index = 0;
 
 			while (index < value.Length) {
+				using var token = new ValueStringBuilder (128);
+
 				while (index < value.Length && IsWhiteSpace (value[index]))
 					index++;
 
 				int startIndex = index;
-				string name;
 
 				while (index < value.Length && value[index] != '=') {
 					if (!IsWhiteSpace (value[index]))
@@ -792,7 +839,7 @@ namespace MimeKit {
 					index++;
 				}
 
-				name = value.Substring (startIndex, index - startIndex);
+				var name = value.AsSpan (startIndex, index - startIndex);
 
 				while (index < value.Length && value[index] != ';') {
 					if (!IsWhiteSpace (value[index]))
@@ -805,7 +852,7 @@ namespace MimeKit {
 					index++;
 				}
 
-				if (lineLength + token.Length + 1 > format.MaxLineLength || name == "bh" || name == "b") {
+				if (lineLength + token.Length + 1 > format.MaxLineLength || name.SequenceEqual ("bh".AsSpan ()) || name.SequenceEqual ("b".AsSpan ())) {
 					encoded.Append (format.NewLine);
 					encoded.Append ('\t');
 					lineLength = 1;
@@ -815,23 +862,66 @@ namespace MimeKit {
 				}
 
 				if (token.Length > format.MaxLineLength) {
-					switch (name) {
-					case "z":
-						EncodeDkimHeaderList (format, encoded, ref lineLength, token.ToString (), '|');
-						break;
-					case "h":
-						EncodeDkimHeaderList (format, encoded, ref lineLength, token.ToString (), ':');
-						break;
-					default:
-						EncodeDkimLongValue (format, encoded, ref lineLength, token.ToString ());
-						break;
+					if (name.SequenceEqual ("z".AsSpan ())) {
+						EncodeDkimHeaderList (format, ref encoded, ref lineLength, token.AsSpan (), '|');
+					} else if (name.SequenceEqual ("h".AsSpan ())) {
+						EncodeDkimHeaderList (format, ref encoded, ref lineLength, token.AsSpan (), ':');
+					} else {
+						EncodeDkimLongValue (format, ref encoded, ref lineLength, token.AsSpan ());
 					}
 				} else {
-					encoded.Append (token.ToString ());
+					encoded.Append (token.AsSpan ());
 					lineLength += token.Length;
 				}
+			}
 
-				token.Length = 0;
+			encoded.Append (format.NewLine);
+
+			return encoding.GetBytes (encoded.ToString ());
+		}
+
+		static byte[] EncodeDispositionNotificationOptions (ParserOptions options, FormatOptions format, Encoding encoding, string field, string value)
+		{
+			var encoded = new ValueStringBuilder (value.Length);
+			int lineLength = field.Length + 1;
+			int index = 0;
+
+			while (index < value.Length) {
+				using var parameter = new ValueStringBuilder (128);
+
+				while (index < value.Length && IsWhiteSpace (value[index]))
+					index++;
+
+				int startIndex = index;
+
+				while (index < value.Length && value[index] != '=') {
+					if (!IsWhiteSpace (value[index]))
+						parameter.Append (value[index]);
+					index++;
+				}
+
+				while (index < value.Length && value[index] != ';') {
+					if (!IsWhiteSpace (value[index]))
+						parameter.Append (value[index]);
+					index++;
+				}
+
+				if (index < value.Length && value[index] == ';') {
+					parameter.Append (';');
+					index++;
+				}
+
+				if (lineLength + parameter.Length + 1 > format.MaxLineLength && encoded.Length > 0) {
+					encoded.Append (format.NewLine);
+					encoded.Append ('\t');
+					lineLength = 1;
+				} else {
+					encoded.Append (' ');
+					lineLength++;
+				}
+
+				encoded.Append (parameter.AsSpan ());
+				lineLength += parameter.Length;
 			}
 
 			encoded.Append (format.NewLine);
@@ -841,7 +931,7 @@ namespace MimeKit {
 
 		static byte[] EncodeReferencesHeader (ParserOptions options, FormatOptions format, Encoding encoding, string field, string value)
 		{
-			var encoded = new StringBuilder ();
+			var encoded = new ValueStringBuilder (value.Length);
 			int lineLength = field.Length + 1;
 			int count = 0;
 
@@ -856,7 +946,9 @@ namespace MimeKit {
 					lineLength++;
 				}
 
-				encoded.Append ('<').Append (reference).Append ('>');
+				encoded.Append ('<');
+				encoded.Append (reference);
+				encoded.Append ('>');
 				lineLength += reference.Length + 2;
 				count++;
 			}
@@ -868,10 +960,59 @@ namespace MimeKit {
 
 		static bool IsWhiteSpace (char c)
 		{
-			return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+			return c is ' ' or '\t' or '\r' or '\n';
 		}
 
-		static IEnumerable<string> TokenizeText (string text)
+		readonly struct Word
+		{
+			readonly string text;
+			readonly int startIndex;
+			readonly int length;
+
+			public Word (string text, int startIndex, int length)
+			{
+				this.startIndex = startIndex;
+				this.length = length;
+				this.text = text;
+			}
+
+			public int Length => length;
+
+			public char this[int index] {
+				get {
+					return text[startIndex + index];
+				}
+			}
+
+			public ReadOnlySpan<char> AsSpan ()
+			{
+				return text.AsSpan (startIndex, length);
+			}
+
+			public IEnumerable<Word> Break (FormatOptions format, int lineLength)
+			{
+				int endIndex = startIndex + length;
+				int index = startIndex;
+
+				lineLength = Math.Max (lineLength, 1);
+
+				while (index < endIndex) {
+					int length = Math.Min (format.MaxLineLength - lineLength, endIndex - index);
+
+					if (char.IsSurrogatePair (text, index + length - 1))
+						length--;
+
+					yield return new Word (text, index, length);
+
+					index += length;
+					lineLength = 1;
+				}
+
+				yield break;
+			}
+		}
+
+		static IEnumerable<Word> TokenizeText (string text)
 		{
 			int index = 0;
 
@@ -881,7 +1022,8 @@ namespace MimeKit {
 				while (index < text.Length && !IsWhiteSpace (text[index]))
 					index++;
 
-				yield return text.Substring (startIndex, index - startIndex);
+				if (index > startIndex)
+					yield return new Word (text, startIndex, index - startIndex);
 
 				if (index == text.Length)
 					break;
@@ -891,43 +1033,7 @@ namespace MimeKit {
 				while (index < text.Length && IsWhiteSpace (text[index]))
 					index++;
 
-				yield return text.Substring (startIndex, index - startIndex);
-			}
-
-			yield break;
-		}
-
-		class BrokenWord
-		{
-			public readonly char[] Text;
-			public readonly int StartIndex;
-			public readonly int Length;
-
-			public BrokenWord (char[] text, int startIndex, int length)
-			{
-				StartIndex = startIndex;
-				Length = length;
-				Text = text;
-			}
-		}
-
-		static IEnumerable<BrokenWord> WordBreak (FormatOptions format, string word, int lineLength)
-		{
-			var chars = word.ToCharArray ();
-			int startIndex = 0;
-
-			lineLength = Math.Max (lineLength, 1);
-
-			while (startIndex < word.Length) {
-				int length = Math.Min (format.MaxLineLength - lineLength, word.Length - startIndex);
-
-				if (char.IsSurrogatePair (word, startIndex + length - 1))
-					length--;
-
-				yield return new BrokenWord (chars, startIndex, length);
-
-				startIndex += length;
-				lineLength = 1;
+				yield return new Word (text, startIndex, index - startIndex);
 			}
 
 			yield break;
@@ -935,7 +1041,7 @@ namespace MimeKit {
 
 		internal static string Fold (FormatOptions format, string field, string value)
 		{
-			var folded = new StringBuilder (value.Length);
+			var folded = new ValueStringBuilder (value.Length);
 			int lineLength = field.Length + 2;
 			int lastLwsp = -1;
 
@@ -957,7 +1063,7 @@ namespace MimeKit {
 						}
 					} else {
 						lineLength += word.Length;
-						folded.Append (word);
+						folded.Append (word.AsSpan ());
 					}
 
 					lastLwsp = folded.Length - 1;
@@ -971,25 +1077,35 @@ namespace MimeKit {
 				}
 
 				if (word.Length > format.MaxLineLength) {
-					foreach (var broken in WordBreak (format, word, lineLength)) {
+					foreach (var broken in word.Break (format, lineLength)) {
 						if (lineLength + broken.Length > format.MaxLineLength) {
 							folded.Append (format.NewLine);
 							folded.Append (' ');
 							lineLength = 1;
 						}
 
-						folded.Append (broken.Text, broken.StartIndex, broken.Length);
+						folded.Append (broken.AsSpan ());
 						lineLength += broken.Length;
 					}
 				} else {
+					folded.Append (word.AsSpan ());
 					lineLength += word.Length;
-					folded.Append (word);
 				}
 			}
 
 			folded.Append (format.NewLine);
 
 			return folded.ToString ();
+		}
+
+		static byte[] ReformatContentDisposition (ParserOptions options, FormatOptions format, Encoding encoding, string field, byte[] rawValue)
+		{
+			if (!ContentDisposition.TryParse (options, rawValue, out var disposition))
+				return rawValue;
+
+			var encoded = disposition.Encode (format, encoding);
+
+			return Encoding.UTF8.GetBytes (encoded);
 		}
 
 		static byte[] EncodeContentDisposition (ParserOptions options, FormatOptions format, Encoding encoding, string field, string value)
@@ -1000,12 +1116,185 @@ namespace MimeKit {
 			return Encoding.UTF8.GetBytes (encoded);
 		}
 
+		static byte[] ReformatContentType (ParserOptions options, FormatOptions format, Encoding encoding, string field, byte[] rawValue)
+		{
+			if (!ContentType.TryParse (options, rawValue, out var contentType))
+				return rawValue;
+
+			var encoded = contentType.Encode (format, encoding);
+
+			return Encoding.UTF8.GetBytes (encoded);
+		}
+
 		static byte[] EncodeContentType (ParserOptions options, FormatOptions format, Encoding encoding, string field, string value)
 		{
 			var contentType = ContentType.Parse (options, value);
 			var encoded = contentType.Encode (format, encoding);
 
 			return Encoding.UTF8.GetBytes (encoded);
+		}
+
+		static void AppendWord (FormatOptions format, ref ValueStringBuilder builder, ref int lineLength, ReadOnlySpan<char> word)
+		{
+			if (lineLength + word.Length + 1 <= format.MaxLineLength) {
+				builder.Append (' ');
+				lineLength++;
+
+				builder.Append (word);
+				lineLength += word.Length;
+			} else if (word.Length + 1 <= format.MaxLineLength) {
+				builder.Append (format.NewLine);
+				builder.Append (' ');
+				builder.Append (word);
+				lineLength = word.Length + 1;
+			} else {
+				int remaining = word.Length;
+				int index = 0;
+
+				do {
+					int wordLength = Math.Min (remaining, format.MaxLineLength - (lineLength + 1));
+
+					builder.Append (' ');
+					lineLength++;
+
+					builder.Append (word.Slice (index, wordLength));
+					lineLength += wordLength;
+					remaining -= wordLength;
+					index += wordLength;
+
+					if (remaining == 0)
+						break;
+
+					builder.Append (format.NewLine);
+					lineLength = 0;
+				} while (true);
+			}
+		}
+
+		static void AppendComment (FormatOptions format, Encoding encoding, ref ValueStringBuilder builder, ref int lineLength, string value, int startIndex, int length)
+		{
+			ReadOnlySpan<char> comment;
+
+			if (!format.International) {
+				comment = Rfc2047.EncodeComment (format, encoding, value, startIndex + 1, length - 2).AsSpan ();
+			} else {
+				comment = value.AsSpan (startIndex, length);
+			}
+
+			// Try to fit the entire comment on a single line.
+			if (lineLength + comment.Length + 1 <= format.MaxLineLength) {
+				builder.Append (' ');
+				lineLength++;
+
+				builder.Append (comment);
+				lineLength += comment.Length;
+			} else if (comment.Length + 1 <= format.MaxLineLength) {
+				builder.Append (format.NewLine);
+				builder.Append (' ');
+				builder.Append (comment);
+				lineLength = comment.Length + 1;
+			} else {
+				// We'll need to split the comment over multiple lines.
+				int index = 0;
+
+				do {
+					// Try to split on words within the comment.
+					int wspIndex = comment.Slice (index).IndexOfAny (WhiteSpace.AsSpan ());
+					wspIndex = wspIndex != -1 ? index + wspIndex : comment.Length;
+
+					int wordLength = wspIndex - index;
+
+					AppendWord (format, ref builder, ref lineLength, comment.Slice (index, wordLength));
+					index = wspIndex;
+
+					if (index < comment.Length) {
+						// Skip over any whitespace (which will effectively compact it).
+						// Note: Since we know this is a comment, the very last char will be a ')', so it can never end with whitespace.
+						while (IsWhiteSpace (comment[index]))
+							index++;
+					}
+				} while (index < comment.Length);
+			}
+		}
+
+		static bool IsMailingListCommandSpecial (char c)
+		{
+			return c is '<' or '(' or ',';
+		}
+
+		static byte[] EncodeMailingListCommandHeader (ParserOptions options, FormatOptions format, Encoding encoding, string field, string value)
+		{
+			var encoded = new ValueStringBuilder (value.Length);
+			int lineLength = field.Length + 1;
+			int index = 0;
+
+			while (index < value.Length) {
+				while (index < value.Length && IsWhiteSpace (value[index]))
+					index++;
+
+				if (index >= value.Length)
+					break;
+
+				int startIndex = index;
+
+				if (value[index] == '<') {
+					// url
+					while (index < value.Length && value[index] != '>')
+						index++;
+
+					if (index < value.Length) {
+						index++;
+
+						int urlLength = index - startIndex;
+
+						if (lineLength + urlLength + 1 < format.MaxLineLength) {
+							encoded.Append (' ');
+							lineLength++;
+
+							encoded.Append (value.AsSpan (startIndex, urlLength));
+							lineLength += urlLength;
+						} else {
+							// Do not break apart a URL that is not already broken.
+							encoded.Append (format.NewLine);
+							encoded.Append (' ');
+							lineLength = 1;
+
+							encoded.Append (value.AsSpan (startIndex, urlLength));
+							lineLength += urlLength;
+						}
+
+						continue;
+					}
+
+					// Fall through to handling this token as a normal word token.
+				} else if (value[index] == '(') {
+					// comment
+					if (ParseUtils.SkipComment (value, ref index, value.Length)) {
+						AppendComment (format, encoding, ref encoded, ref lineLength, value, startIndex, index - startIndex);
+						continue;
+					}
+
+					// Fall through to handling this token as a normal word token.
+				} else if (value[index] == ',') {
+					// Collapse multiple commas into a single comma.
+					while (index < value.Length && (value[index] == ',' || IsWhiteSpace (value[index])))
+						index++;
+
+					encoded.Append (',');
+					lineLength++;
+					continue;
+				}
+
+				// word
+				while (index < value.Length && !IsWhiteSpace (value[index]) && !IsMailingListCommandSpecial (value[index]))
+					index++;
+
+				AppendWord (format, ref encoded, ref lineLength, value.AsSpan (startIndex, index - startIndex));
+			}
+
+			encoded.Append (format.NewLine);
+
+			return encoding.GetBytes (encoded.ToString ());
 		}
 
 		static byte[] EncodeUnstructuredHeader (ParserOptions options, FormatOptions format, Encoding encoding, string field, string value)
@@ -1025,9 +1314,11 @@ namespace MimeKit {
 		/// Format the raw value of the header to conform with the specified formatting options.
 		/// </summary>
 		/// <remarks>
-		/// This method will called by the <a href="Overload_MimeKit_Header_SetValue.htm">SetValue</a>
-		/// methods and may also be conditionally called when the header is being written to a
-		/// <see cref="System.IO.Stream"/>.
+		/// <para>This method is called by the <a href="Overload_MimeKit_Header_SetValue.htm">SetValue</a>
+		/// methods.</para>
+		/// <para>This method should encode unicode characters according to the rules of rfc2047 (when
+		/// <see cref="FormatOptions.International"/> is <c>false</c>) as well as properly folding the
+		/// value to conform with rfc5322.</para>
 		/// </remarks>
 		/// <param name="format">The formatting options.</param>
 		/// <param name="encoding">The character encoding to be used.</param>
@@ -1063,6 +1354,8 @@ namespace MimeKit {
 				return EncodeContentDisposition (Options, format, encoding, Field, value);
 			case HeaderId.ContentType:
 				return EncodeContentType (Options, format, encoding, Field, value);
+			case HeaderId.DispositionNotificationOptions:
+				return EncodeDispositionNotificationOptions (Options, format, encoding, Field, value);
 			case HeaderId.ArcAuthenticationResults:
 			case HeaderId.AuthenticationResults:
 				return EncodeAuthenticationResultsHeader (Options, format, encoding, Field, value);
@@ -1070,6 +1363,13 @@ namespace MimeKit {
 			case HeaderId.ArcSeal:
 			case HeaderId.DkimSignature:
 				return EncodeDkimOrArcSignatureHeader (Options, format, encoding, Field, value);
+			case HeaderId.ListArchive:
+			case HeaderId.ListHelp:
+			case HeaderId.ListOwner:
+			case HeaderId.ListPost:
+			case HeaderId.ListSubscribe:
+			case HeaderId.ListUnsubscribe:
+				return EncodeMailingListCommandHeader (Options, format, encoding, Field, value);
 			default:
 				return EncodeUnstructuredHeader (Options, format, encoding, Field, value);
 			}
@@ -1078,18 +1378,65 @@ namespace MimeKit {
 		internal byte[] GetRawValue (FormatOptions format)
 		{
 			if (format.International && !explicitRawValue) {
-				if (textValue == null)
-					textValue = Unfold (Rfc2047.DecodeText (Options, rawValue));
-
-				// Note: if we're reformatting to be International, then charset doesn't matter.
-				return FormatRawValue (format, CharsetUtils.UTF8, textValue);
+				switch (Id) {
+				case HeaderId.DispositionNotificationTo:
+				case HeaderId.ResentReplyTo:
+				case HeaderId.ResentSender:
+				case HeaderId.ResentFrom:
+				case HeaderId.ResentBcc:
+				case HeaderId.ResentCc:
+				case HeaderId.ResentTo:
+				case HeaderId.ReplyTo:
+				case HeaderId.Sender:
+				case HeaderId.From:
+				case HeaderId.Bcc:
+				case HeaderId.Cc:
+				case HeaderId.To:
+					return ReformatAddressHeader (Options, format, CharsetUtils.UTF8, Field, rawValue);
+				case HeaderId.Received:
+					// Note: Received headers should never be reformatted.
+					return rawValue;
+				case HeaderId.ResentMessageId:
+				case HeaderId.InReplyTo:
+				case HeaderId.MessageId:
+				case HeaderId.ContentId:
+					// Note: No text that can be internationalized.
+					return rawValue;
+				case HeaderId.References:
+					// Note: No text that can be internationalized.
+					return rawValue;
+				case HeaderId.ContentDisposition:
+					return ReformatContentDisposition (Options, format, CharsetUtils.UTF8, Field, rawValue);
+				case HeaderId.ContentType:
+					return ReformatContentType (Options, format, CharsetUtils.UTF8, Field, rawValue);
+				case HeaderId.DispositionNotificationOptions:
+					return rawValue;
+				case HeaderId.ArcAuthenticationResults:
+				case HeaderId.AuthenticationResults:
+					// Note: No text that can be internationalized.
+					return rawValue;
+				case HeaderId.ArcMessageSignature:
+				case HeaderId.ArcSeal:
+				case HeaderId.DkimSignature:
+					// TODO: Is there any value in reformatting this for internationalized text?
+					return rawValue;
+				case HeaderId.ListArchive:
+				case HeaderId.ListHelp:
+				case HeaderId.ListOwner:
+				case HeaderId.ListPost:
+				case HeaderId.ListSubscribe:
+				case HeaderId.ListUnsubscribe:
+					return EncodeMailingListCommandHeader (Options, format, CharsetUtils.UTF8, Field, Value);
+				default:
+					return EncodeUnstructuredHeader (Options, format, CharsetUtils.UTF8, Field, Value);
+				}
 			}
 
 			return rawValue;
 		}
 
 		/// <summary>
-		/// Sets the header value using the specified formatting options and character encoding.
+		/// Ses the header value using the specified formatting options and character encoding.
 		/// </summary>
 		/// <remarks>
 		/// When a particular charset is desired for encoding the header value
@@ -1108,18 +1455,19 @@ namespace MimeKit {
 		/// </exception>
 		public void SetValue (FormatOptions format, Encoding encoding, string value)
 		{
-			if (format == null)
+			if (format is null)
 				throw new ArgumentNullException (nameof (format));
 
-			if (encoding == null)
+			if (encoding is null)
 				throw new ArgumentNullException (nameof (encoding));
 
-			if (value == null)
+			if (value is null)
 				throw new ArgumentNullException (nameof (value));
 
 			textValue = Unfold (value.Trim ());
 
 			rawValue = FormatRawValue (format, encoding, textValue);
+			explicitRawValue = false;
 
 			// cache the formatting options that change the way the header is formatted
 			//allowMixedHeaderCharsets = format.AllowMixedHeaderCharsets;
@@ -1131,7 +1479,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Sets the header value using the specified character encoding.
+		/// Set the header value using the specified character encoding.
 		/// </summary>
 		/// <remarks>
 		/// When a particular charset is desired for encoding the header value
@@ -1151,7 +1499,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Sets the header value using the specified formatting options and charset.
+		/// Set the header value using the specified formatting options and charset.
 		/// </summary>
 		/// <remarks>
 		/// When a particular charset is desired for encoding the header value
@@ -1173,10 +1521,10 @@ namespace MimeKit {
 		/// </exception>
 		public void SetValue (FormatOptions format, string charset, string value)
 		{
-			if (format == null)
+			if (format is null)
 				throw new ArgumentNullException (nameof (format));
 
-			if (charset == null)
+			if (charset is null)
 				throw new ArgumentNullException (nameof (charset));
 
 			var encoding = CharsetUtils.GetEncoding (charset);
@@ -1185,7 +1533,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Sets the header value using the specified charset.
+		/// Set the header value using the specified charset.
 		/// </summary>
 		/// <remarks>
 		/// When a particular charset is desired for encoding the header value
@@ -1204,7 +1552,7 @@ namespace MimeKit {
 		/// </exception>
 		public void SetValue (string charset, string value)
 		{
-			if (charset == null)
+			if (charset is null)
 				throw new ArgumentNullException (nameof (charset));
 
 			var encoding = CharsetUtils.GetEncoding (charset);
@@ -1229,7 +1577,7 @@ namespace MimeKit {
 		/// </exception>
 		public void SetRawValue (byte[] value)
 		{
-			if (value == null)
+			if (value is null)
 				throw new ArgumentNullException (nameof (value));
 
 			if (value.Length == 0 || value[value.Length - 1] != (byte) '\n')
@@ -1246,12 +1594,11 @@ namespace MimeKit {
 
 		void OnChanged ()
 		{
-			if (Changed != null)
-				Changed (this, EventArgs.Empty);
+			Changed?.Invoke (this, EventArgs.Empty);
 		}
 
 		/// <summary>
-		/// Returns a string representation of the header.
+		/// Return a string representation of the header.
 		/// </summary>
 		/// <remarks>
 		/// Formats the header field and value in a way that is suitable for display.
@@ -1272,13 +1619,16 @@ namespace MimeKit {
 		/// </remarks>
 		/// <returns>The unfolded header value.</returns>
 		/// <param name="text">The header text.</param>
-		public static unsafe string Unfold (string text)
+#if NET5_0_OR_GREATER
+		[System.Runtime.CompilerServices.SkipLocalsInit]
+#endif
+		public static string Unfold (string text)
 		{
 			int startIndex;
 			int endIndex;
 			int i = 0;
 
-			if (text == null)
+			if (text is null)
 				return string.Empty;
 
 			while (i < text.Length && char.IsWhiteSpace (text[i]))
@@ -1296,32 +1646,25 @@ namespace MimeKit {
 			}
 
 			int count = endIndex - startIndex;
-			char[] chars = new char[count];
+			Span<char> chars = count <= 32
+				? stackalloc char[32]
+				: new char[count];
 
-			fixed (char* outbuf = chars) {
-				char* outptr = outbuf;
-
-				for (i = startIndex; i < endIndex; i++) {
-					if (text[i] != '\r' && text[i] != '\n')
-						*outptr++ = text[i];
-				}
-
-				count = (int) (outptr - outbuf);
+			for (i = startIndex, count = 0; i < endIndex; i++) {
+				if (text[i] != '\r' && text[i] != '\n')
+					chars[count++] = text[i];
 			}
 
-			return new string (chars, 0, count);
+			return chars.Slice (0, count).ToString ();
 		}
 
-		static bool IsAsciiAtom (byte c)
+		[MethodImpl (MethodImplOptions.AggressiveInlining)]
+		static bool IsFieldText (byte c)
 		{
-			return c.IsAsciiAtom ();
+			return c.IsFieldText ();
 		}
 
-		static bool IsControl (byte c)
-		{
-			return c.IsCtrl ();
-		}
-
+		[MethodImpl (MethodImplOptions.AggressiveInlining)]
 		static bool IsBlank (byte c)
 		{
 			return c.IsBlank ();
@@ -1335,13 +1678,8 @@ namespace MimeKit {
 			var invalid = false;
 
 			// find the end of the field name
-			if (strict) {
-				while (inptr < inend && IsAsciiAtom (*inptr))
-					inptr++;
-			} else {
-				while (inptr < inend && *inptr != (byte) ':' && !IsControl (*inptr))
-					inptr++;
-			}
+			while (inptr < inend && IsFieldText (*inptr))
+				inptr++;
 
 			while (inptr < inend && IsBlank (*inptr))
 				inptr++;
@@ -1352,6 +1690,7 @@ namespace MimeKit {
 					return false;
 				}
 
+				// mark the header as invalid and consume the entire input as the 'field'
 				invalid = true;
 				inptr = inend;
 			}
@@ -1367,9 +1706,15 @@ namespace MimeKit {
 			byte[] value;
 
 			if (inptr < inend) {
+				// skip over the ':'
 				inptr++;
 
 				int count = (int) (inend - inptr);
+
+				// When in strict mode (aka when called from any of the public Parse/TryParse APIs), force the value to be canonicalized by ending with a new-line sequence.
+				if (strict && inend[-1] != (byte) '\n')
+					count += FormatOptions.Default.NewLine.Length;
+
 				value = new byte[count];
 
 				fixed (byte* outbuf = value) {
@@ -1377,9 +1722,19 @@ namespace MimeKit {
 
 					while (inptr < inend)
 						*outptr++ = *inptr++;
+
+					// When in strict mode (aka when called from any of the public Parse/TryParse APIs), force the value to be canonicalized by ending with a new-line sequence.
+					// See https://github.com/jstedfast/MimeKit/issues/695 for more information.
+					if (strict && inend[-1] != (byte) '\n') {
+						var newLine = FormatOptions.Default.NewLineBytes;
+
+						for (int i = 0; i < newLine.Length; i++)
+							*outptr++ = newLine[i];
+					}
 				}
 			} else {
-				value = new byte[0];
+				// Note: The only way to get here is if we have an invalid header, in which case the entire 'header' is stored as the 'field'.
+				value = Array.Empty<byte> ();
 			}
 
 			header = new Header (options, field, value, invalid);

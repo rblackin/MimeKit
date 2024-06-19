@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -30,6 +30,8 @@ using System.Data;
 using System.Text;
 using System.Data.Common;
 using System.Collections.Generic;
+
+using Org.BouncyCastle.Security;
 
 #if __MOBILE__
 using Mono.Data.Sqlite;
@@ -99,11 +101,11 @@ namespace MimeKit.Cryptography {
 #if __MOBILE__
 			IsAvailable = true;
 #else // !__MOBILE__
-#if NETFRAMEWORK || NETSTANDARD2_0 || NETCOREAPP3_0
+#if NETFRAMEWORK || NETSTANDARD2_0 || NETSTANDARD2_1 || NET5_0_OR_GREATER
 			var platform = Environment.OSVersion.Platform;
 #endif
 
-#if NETSTANDARD1_3 || NETSTANDARD1_6 || NETSTANDARD2_0 || NETCOREAPP3_0
+#if NETSTANDARD2_0 || NETSTANDARD2_1
 			if ((sqliteAssembly = SQLiteAssembly.Load ("Microsoft.Data.Sqlite")) != null) {
 				// Make sure that the runtime can load the native sqlite library
 				if (VerifySQLiteAssemblyIsUsable ()) {
@@ -113,7 +115,7 @@ namespace MimeKit.Cryptography {
 			}
 #endif
 
-#if NETFRAMEWORK || NETCOREAPP3_0
+#if NETFRAMEWORK || NET5_0_OR_GREATER
 			// Mono.Data.Sqlite will only work on Unix-based platforms.
 			if (platform == PlatformID.Unix || platform == PlatformID.MacOSX) {
 				if ((sqliteAssembly = SQLiteAssembly.Load ("Mono.Data.Sqlite")) != null) {
@@ -126,7 +128,7 @@ namespace MimeKit.Cryptography {
 			}
 #endif
 
-#if NETFRAMEWORK || NETSTANDARD2_0 || NETCOREAPP3_0
+#if NETFRAMEWORK || NETSTANDARD2_0 || NETSTANDARD2_1 || NET5_0_OR_GREATER
 			if ((sqliteAssembly = SQLiteAssembly.Load ("System.Data.SQLite")) != null) {
 				// Make sure that the runtime can load the native sqlite3 library
 				if (VerifySQLiteAssemblyIsUsable ()) {
@@ -160,7 +162,7 @@ namespace MimeKit.Cryptography {
 			get; private set;
 		}
 
-		static DbConnection CreateConnection (string fileName)
+		internal static DbConnection CreateConnection (string fileName)
 		{
 			if (fileName == null)
 				throw new ArgumentNullException (nameof (fileName));
@@ -234,6 +236,40 @@ namespace MimeKit.Cryptography {
 		/// Initialize a new instance of the <see cref="SqliteCertificateDatabase"/> class.
 		/// </summary>
 		/// <remarks>
+		/// <para>Creates a new <see cref="SqliteCertificateDatabase"/> and opens a connection to the
+		/// SQLite database at the specified path using the Mono.Data.Sqlite binding to the native
+		/// SQLite library.</para>
+		/// <para>If Mono.Data.Sqlite is not available or if an alternative binding to the native
+		/// SQLite library is preferred, then consider using
+		/// <see cref="SqlCertificateDatabase(System.Data.Common.DbConnection,string,SecureRandom)"/> instead.</para>
+		/// </remarks>
+		/// <param name="fileName">The file name.</param>
+		/// <param name="password">The password used for encrypting and decrypting the private keys.</param>
+		/// <param name="random">The secure pseudo-random number generator.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <para><paramref name="fileName"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="password"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="random"/> is <c>null</c>.</para>
+		/// </exception>
+		/// <exception cref="System.ArgumentException">
+		/// The specified file path is empty.
+		/// </exception>
+		/// <exception cref="System.UnauthorizedAccessException">
+		/// The user does not have access to read the specified file.
+		/// </exception>
+		/// <exception cref="System.IO.IOException">
+		/// An error occurred reading the file.
+		/// </exception>
+		public SqliteCertificateDatabase (string fileName, string password, SecureRandom random) : this (CreateConnection (fileName), password, random)
+		{
+		}
+
+		/// <summary>
+		/// Initialize a new instance of the <see cref="SqliteCertificateDatabase"/> class.
+		/// </summary>
+		/// <remarks>
 		/// Creates a new <see cref="SqliteCertificateDatabase"/> using the provided SQLite database connection.
 		/// </remarks>
 		/// <param name="connection">The SQLite connection.</param>
@@ -248,12 +284,32 @@ namespace MimeKit.Cryptography {
 		}
 
 		/// <summary>
+		/// Initialize a new instance of the <see cref="SqliteCertificateDatabase"/> class.
+		/// </summary>
+		/// <remarks>
+		/// Creates a new <see cref="SqliteCertificateDatabase"/> using the provided SQLite database connection.
+		/// </remarks>
+		/// <param name="connection">The SQLite connection.</param>
+		/// <param name="password">The password used for encrypting and decrypting the private keys.</param>
+		/// <param name="random">The secure pseudo-random number generator.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <para><paramref name="connection"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="password"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="random"/> is <c>null</c>.</para>
+		/// </exception>
+		public SqliteCertificateDatabase (DbConnection connection, string password, SecureRandom random) : base (connection, password, random)
+		{
+		}
+
+		/// <summary>
 		/// Gets the columns for the specified table.
 		/// </summary>
 		/// <remarks>
 		/// Gets the list of columns for the specified table.
 		/// </remarks>
-		/// <param name="connection">The <see cref="System.Data.Common.DbConnection"/>.</param>
+		/// <param name="connection">The database connection.</param>
 		/// <param name="tableName">The name of the table.</param>
 		/// <returns>The list of columns.</returns>
 		protected override IList<DataColumn> GetTableColumns (DbConnection connection, string tableName)
@@ -339,7 +395,7 @@ namespace MimeKit.Cryptography {
 		/// <remarks>
 		/// Creates the specified table.
 		/// </remarks>
-		/// <param name="connection">The <see cref="System.Data.Common.DbConnection"/>.</param>
+		/// <param name="connection">The database connection.</param>
 		/// <param name="table">The table.</param>
 		protected override void CreateTable (DbConnection connection, DataTable table)
 		{
@@ -372,7 +428,7 @@ namespace MimeKit.Cryptography {
 		/// <remarks>
 		/// Adds a column to a table.
 		/// </remarks>
-		/// <param name="connection">The <see cref="System.Data.Common.DbConnection"/>.</param>
+		/// <param name="connection">The database connection.</param>
 		/// <param name="table">The table.</param>
 		/// <param name="column">The column to add.</param>
 		protected override void AddTableColumn (DbConnection connection, DataTable table, DataColumn column)

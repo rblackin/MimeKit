@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -27,7 +27,6 @@
 using System;
 using System.IO;
 using System.Text;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
@@ -46,9 +45,31 @@ namespace MimeKit {
 	/// <see cref="MimePart"/> who's content is another MIME message/document). All other types are
 	/// derivatives of one of those.</para>
 	/// </remarks>
-	public abstract class MimeEntity
+	public abstract class MimeEntity : IMimeEntity
 	{
+		[Flags]
+		internal enum LazyLoadedFields : short
+		{
+			None                    = 0,
+
+			// MimeEntity
+			ContentBase             = 1 << 0,
+			ContentDisposition      = 1 << 1,
+			ContentId               = 1 << 2,
+			ContentLocation         = 1 << 3,
+
+			// MimePart
+			ContentDescription      = 1 << 4,
+			ContentDuration         = 1 << 5,
+			ContentLanguage         = 1 << 6,
+			ContentMd5              = 1 << 7,
+			ContentTransferEncoding = 1 << 8
+		}
+
+		internal LazyLoadedFields LazyLoaded;
 		internal bool EnsureNewLine;
+		internal bool IsDisposed;
+
 		ContentDisposition disposition;
 		string contentId;
 		Uri location;
@@ -68,14 +89,11 @@ namespace MimeKit {
 		/// </exception>
 		protected MimeEntity (MimeEntityConstructorArgs args)
 		{
-			if (args == null)
+			if (args is null)
 				throw new ArgumentNullException (nameof (args));
 
 			Headers = new HeaderList (args.ParserOptions);
 			ContentType = args.ContentType;
-
-			ContentType.Changed += ContentTypeChanged;
-			Headers.Changed += HeadersChanged;
 
 			foreach (var header in args.Headers) {
 				if (args.IsTopLevel && !header.Field.StartsWith ("Content-", StringComparison.OrdinalIgnoreCase))
@@ -83,6 +101,9 @@ namespace MimeKit {
 
 				Headers.Add (header);
 			}
+
+			ContentType.Changed += ContentTypeChanged;
+			Headers.Changed += HeadersChanged;
 		}
 
 		/// <summary>
@@ -114,7 +135,7 @@ namespace MimeKit {
 		/// </exception>
 		protected MimeEntity (ContentType contentType)
 		{
-			if (contentType == null)
+			if (contentType is null)
 				throw new ArgumentNullException (nameof (contentType));
 
 			Headers = new HeaderList ();
@@ -124,6 +145,30 @@ namespace MimeKit {
 			Headers.Changed += HeadersChanged;
 
 			SerializeContentType ();
+		}
+
+		/// <summary>
+		/// Releases unmanaged resources and performs other cleanup operations before the
+		/// <see cref="MimeEntity"/> is reclaimed by garbage collection.
+		/// </summary>
+		/// <remarks>
+		/// Releases unmanaged resources and performs other cleanup operations before the
+		/// <see cref="MimeEntity"/> is reclaimed by garbage collection.
+		/// </remarks>
+		~MimeEntity ()
+		{
+			Dispose (false);
+		}
+
+		internal void CheckDisposed (string objectName)
+		{
+			if (IsDisposed)
+				throw new ObjectDisposedException (objectName);
+		}
+
+		void CheckDisposed ()
+		{
+			CheckDisposed (nameof (MimeEntity));
 		}
 
 		/// <summary>
@@ -152,7 +197,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets the list of headers.
+		/// Get the list of headers.
 		/// </summary>
 		/// <remarks>
 		/// Represents the list of headers for a MIME part. Typically, the headers of
@@ -165,7 +210,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets or sets the content disposition.
+		/// Get or set the content disposition.
 		/// </summary>
 		/// <remarks>
 		/// Represents the pre-parsed Content-Disposition header value, if present.
@@ -173,27 +218,47 @@ namespace MimeKit {
 		/// be <c>null</c>.
 		/// </remarks>
 		/// <value>The content disposition.</value>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		public ContentDisposition ContentDisposition {
-			get { return disposition; }
+			get {
+				CheckDisposed ();
+
+				if ((LazyLoaded & LazyLoadedFields.ContentDisposition) == 0) {
+					if (Headers.TryGetHeader (HeaderId.ContentDisposition, out var header)) {
+						if (ContentDisposition.TryParse (Headers.Options, header.RawValue, out disposition))
+							disposition.Changed += ContentDispositionChanged;
+					}
+
+					LazyLoaded |= LazyLoadedFields.ContentDisposition;
+				}
+
+				return disposition;
+			}
 			set {
-				if (disposition == value)
+				CheckDisposed ();
+
+				if ((LazyLoaded & LazyLoadedFields.ContentDisposition) != 0 && disposition == value)
 					return;
 
-				if (disposition != null) {
+				if (disposition != null)
 					disposition.Changed -= ContentDispositionChanged;
-					RemoveHeader ("Content-Disposition");
-				}
 
 				disposition = value;
 				if (disposition != null) {
 					disposition.Changed += ContentDispositionChanged;
 					SerializeContentDisposition ();
+				} else {
+					RemoveHeader ("Content-Disposition");
 				}
+
+				LazyLoaded |= LazyLoadedFields.ContentDisposition;
 			}
 		}
 
 		/// <summary>
-		/// Gets the type of the content.
+		/// Get the type of the content.
 		/// </summary>
 		/// <remarks>
 		/// <para>The Content-Type header specifies information about the type of content contained
@@ -205,7 +270,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets or sets the base content URI.
+		/// Get or set the base content URI.
 		/// </summary>
 		/// <remarks>
 		/// <para>The Content-Base header specifies the base URI for the <see cref="MimeEntity"/>
@@ -217,10 +282,30 @@ namespace MimeKit {
 		/// <exception cref="System.ArgumentException">
 		/// <paramref name="value"/> is not an absolute URI.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		public Uri ContentBase {
-			get { return baseUri; }
+			get {
+				CheckDisposed ();
+
+				if ((LazyLoaded & LazyLoadedFields.ContentBase) == 0) {
+					if (Headers.TryGetHeader (HeaderId.ContentBase, out var header)) {
+						var value = header.Value.Trim ();
+
+						if (Uri.IsWellFormedUriString (value, UriKind.Absolute))
+							baseUri = new Uri (value, UriKind.Absolute);
+					}
+
+					LazyLoaded |= LazyLoadedFields.ContentBase;
+				}
+
+				return baseUri;
+			}
 			set {
-				if (baseUri == value)
+				CheckDisposed ();
+
+				if ((LazyLoaded & LazyLoadedFields.ContentBase) != 0 && baseUri == value)
 					return;
 
 				if (value != null && !value.IsAbsoluteUri)
@@ -228,15 +313,18 @@ namespace MimeKit {
 
 				baseUri = value;
 
-				if (value != null)
+				if (value != null) {
 					SetHeader ("Content-Base", value.ToString ());
-				else
+				} else {
 					RemoveHeader ("Content-Base");
+				}
+
+				LazyLoaded |= LazyLoadedFields.ContentBase;
 			}
 		}
 
 		/// <summary>
-		/// Gets or sets the content location.
+		/// Get or set the content location.
 		/// </summary>
 		/// <remarks>
 		/// <para>The Content-Location header specifies the URI for a MIME entity and can be
@@ -248,40 +336,89 @@ namespace MimeKit {
 		/// <para>For more information, see <a href="https://tools.ietf.org/html/rfc2110">rfc2110</a>.</para>
 		/// </remarks>
 		/// <value>The content location or <c>null</c>.</value>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		public Uri ContentLocation {
-			get { return location; }
+			get {
+				CheckDisposed ();
+
+				if ((LazyLoaded & LazyLoadedFields.ContentLocation) == 0) {
+					if (Headers.TryGetHeader (HeaderId.ContentLocation, out var header)) {
+						var value = header.Value.Trim ();
+
+						if (Uri.IsWellFormedUriString (value, UriKind.Absolute))
+							location = new Uri (value, UriKind.Absolute);
+						else if (Uri.IsWellFormedUriString (value, UriKind.Relative))
+							location = new Uri (value, UriKind.Relative);
+					}
+
+					LazyLoaded |= LazyLoadedFields.ContentLocation;
+				}
+
+				return location;
+			}
 			set {
-				if (location == value)
+				CheckDisposed ();
+
+				if ((LazyLoaded & LazyLoadedFields.ContentLocation) != 0 && location == value)
 					return;
 
 				location = value;
 
-				if (value != null)
+				if (value != null) {
 					SetHeader ("Content-Location", value.ToString ());
-				else
+				} else {
 					RemoveHeader ("Content-Location");
+				}
+
+				LazyLoaded |= LazyLoadedFields.ContentLocation;
 			}
 		}
 
 		/// <summary>
-		/// Gets or sets the content identifier.
+		/// Get or set the Content-Id.
 		/// </summary>
 		/// <remarks>
-		/// <para>The Content-Id header is used for uniquely identifying a particular entity and
-		/// uses the same syntax as the Message-Id header on MIME messages.</para>
-		/// <para>Setting a Content-Id allows other <see cref="MimePart"/> objects within the same
+		/// <para>The <c>Content-Id</c> header is used for uniquely identifying a particular entity and
+		/// uses the same syntax as the <c>Message-Id</c> header on MIME messages.</para>
+		/// <para>Setting a <c>Content-Id</c> allows other <see cref="MimePart"/> objects within the same
 		/// multipart/related container to reference this part by its unique identifier, typically
 		/// by using a "cid:" URI in an HTML-formatted message body. This can be useful, for example,
 		/// when the HTML-formatted message body needs to reference image attachments.</para>
+		/// <note type="note">It is recommended that <see cref="MimeUtils.GenerateMessageId()"/> or
+		/// <see cref="MimeUtils.GenerateMessageId(string)"/> be used to generate a valid
+		/// <c>Content-Id</c> value.</note>
 		/// </remarks>
 		/// <value>The content identifier.</value>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		public string ContentId {
-			get { return contentId; }
+			get {
+				CheckDisposed ();
+
+				if ((LazyLoaded & LazyLoadedFields.ContentId) == 0) {
+					if (Headers.TryGetHeader (HeaderId.ContentId, out var header)) {
+						int index = 0;
+
+						if (ParseUtils.TryParseMsgId (header.RawValue, ref index, header.RawValue.Length, false, false, out string msgid))
+							contentId = msgid;
+					}
+
+					LazyLoaded |= LazyLoadedFields.ContentId;
+				}
+
+				return contentId;
+			}
 			set {
-				if (contentId == value)
+				CheckDisposed ();
+
+				if ((LazyLoaded & LazyLoadedFields.ContentId) != 0 && contentId == value)
 					return;
 
-				if (value == null) {
+				if (value is null) {
+					LazyLoaded |= LazyLoadedFields.ContentId;
 					RemoveHeader ("Content-Id");
 					contentId = null;
 					return;
@@ -293,6 +430,7 @@ namespace MimeKit {
 				if (!ParseUtils.TryParseMsgId (buffer, ref index, buffer.Length, false, false, out string id))
 					throw new ArgumentException ("Invalid Content-Id format.", nameof (value));
 
+				LazyLoaded |= LazyLoadedFields.ContentId;
 				contentId = id;
 
 				SetHeader ("Content-Id", "<" + contentId + ">");
@@ -300,7 +438,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets a value indicating whether this <see cref="MimePart"/> is an attachment.
+		/// Get a value indicating whether this <see cref="MimePart"/> is an attachment.
 		/// </summary>
 		/// <remarks>
 		/// If the Content-Disposition header is set and has a value of <c>"attachment"</c>,
@@ -308,11 +446,20 @@ namespace MimeKit {
 		/// <see cref="MimePart"/> is not meant to be treated as an attachment.
 		/// </remarks>
 		/// <value><c>true</c> if this <see cref="MimePart"/> is an attachment; otherwise, <c>false</c>.</value>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		public bool IsAttachment {
-			get { return ContentDisposition != null && ContentDisposition.IsAttachment; }
+			get {
+				CheckDisposed ();
+
+				return ContentDisposition != null && ContentDisposition.IsAttachment;
+			}
 			set {
+				CheckDisposed ();
+
 				if (value) {
-					if (ContentDisposition == null)
+					if (ContentDisposition is null)
 						ContentDisposition = new ContentDisposition (ContentDisposition.Attachment);
 					else if (!ContentDisposition.IsAttachment)
 						ContentDisposition.Disposition = ContentDisposition.Attachment;
@@ -322,10 +469,8 @@ namespace MimeKit {
 			}
 		}
 
-		static readonly byte[] ToStringWarning = Encoding.UTF8.GetBytes ("X-MimeKit-Warning: Do NOT use ToString() to serialize entities! Use one of the WriteTo() methods instead!");
-
 		/// <summary>
-		/// Returns a <see cref="String"/> that represents the <see cref="MimeEntity"/> for debugging purposes.
+		/// Return a <see cref="String"/> that represents the <see cref="MimeEntity"/> for debugging purposes.
 		/// </summary>
 		/// <remarks>
 		/// <para>Returns a <see cref="String"/> that represents the <see cref="MimeEntity"/> for debugging purposes.</para>
@@ -335,19 +480,17 @@ namespace MimeKit {
 		/// conversion.</para></note>
 		/// </remarks>
 		/// <returns>A <see cref="String"/> that represents the <see cref="MimeEntity"/> for debugging purposes.</returns>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		public override string ToString ()
 		{
-			using (var memory = new MemoryStream ()) {
-				memory.Write (ToStringWarning, 0, ToStringWarning.Length);
-				memory.Write (FormatOptions.Default.NewLineBytes, 0, FormatOptions.Default.NewLineBytes.Length);
+			CheckDisposed ();
 
+			using (var memory = new MemoryStream ()) {
 				WriteTo (memory);
 
-#if !NETSTANDARD1_3 && !NETSTANDARD1_6
 				var buffer = memory.GetBuffer ();
-#else
-				var buffer = memory.ToArray ();
-#endif
 				int count = (int) memory.Length;
 
 				return CharsetUtils.Latin1.GetString (buffer, 0, count);
@@ -369,10 +512,15 @@ namespace MimeKit {
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="visitor"/> is <c>null</c>.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		public virtual void Accept (MimeVisitor visitor)
 		{
-			if (visitor == null)
+			if (visitor is null)
 				throw new ArgumentNullException (nameof (visitor));
+
+			CheckDisposed ();
 
 			visitor.VisitMimeEntity (this);
 		}
@@ -389,6 +537,9 @@ namespace MimeKit {
 		/// <para><paramref name="maxLineLength"/> is not between <c>72</c> and <c>998</c> (inclusive).</para>
 		/// <para>-or-</para>
 		/// <para><paramref name="constraint"/> is not a valid value.</para>
+		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
 		/// </exception>
 		public abstract void Prepare (EncodingConstraint constraint, int maxLineLength = 78);
 
@@ -408,19 +559,24 @@ namespace MimeKit {
 		/// <para>-or-</para>
 		/// <para><paramref name="stream"/> is <c>null</c>.</para>
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public virtual void WriteTo (FormatOptions options, Stream stream, bool contentOnly, CancellationToken cancellationToken = default (CancellationToken))
+		public virtual void WriteTo (FormatOptions options, Stream stream, bool contentOnly, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (stream == null)
+			if (stream is null)
 				throw new ArgumentNullException (nameof (stream));
+
+			CheckDisposed ();
 
 			if (!contentOnly)
 				Headers.WriteTo (options, stream, cancellationToken);
@@ -443,24 +599,29 @@ namespace MimeKit {
 		/// <para>-or-</para>
 		/// <para><paramref name="stream"/> is <c>null</c>.</para>
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public virtual Task WriteToAsync (FormatOptions options, Stream stream, bool contentOnly, CancellationToken cancellationToken = default (CancellationToken))
+		public virtual Task WriteToAsync (FormatOptions options, Stream stream, bool contentOnly, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (stream == null)
+			if (stream is null)
 				throw new ArgumentNullException (nameof (stream));
+
+			CheckDisposed ();
 
 			if (!contentOnly)
 				return Headers.WriteToAsync (options, stream, cancellationToken);
 
-			return Task.FromResult (0);
+			return Task.CompletedTask;
 		}
 
 		/// <summary>
@@ -478,13 +639,16 @@ namespace MimeKit {
 		/// <para>-or-</para>
 		/// <para><paramref name="stream"/> is <c>null</c>.</para>
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public void WriteTo (FormatOptions options, Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public void WriteTo (FormatOptions options, Stream stream, CancellationToken cancellationToken = default)
 		{
 			WriteTo (options, stream, false, cancellationToken);
 		}
@@ -505,13 +669,16 @@ namespace MimeKit {
 		/// <para>-or-</para>
 		/// <para><paramref name="stream"/> is <c>null</c>.</para>
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public Task WriteToAsync (FormatOptions options, Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public Task WriteToAsync (FormatOptions options, Stream stream, CancellationToken cancellationToken = default)
 		{
 			return WriteToAsync (options, stream, false, cancellationToken);
 		}
@@ -528,13 +695,16 @@ namespace MimeKit {
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="stream"/> is <c>null</c>.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public void WriteTo (Stream stream, bool contentOnly, CancellationToken cancellationToken = default (CancellationToken))
+		public void WriteTo (Stream stream, bool contentOnly, CancellationToken cancellationToken = default)
 		{
 			WriteTo (FormatOptions.Default, stream, contentOnly, cancellationToken);
 		}
@@ -552,13 +722,16 @@ namespace MimeKit {
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="stream"/> is <c>null</c>.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public Task WriteToAsync (Stream stream, bool contentOnly, CancellationToken cancellationToken = default (CancellationToken))
+		public Task WriteToAsync (Stream stream, bool contentOnly, CancellationToken cancellationToken = default)
 		{
 			return WriteToAsync (FormatOptions.Default, stream, contentOnly, cancellationToken);
 		}
@@ -574,13 +747,16 @@ namespace MimeKit {
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="stream"/> is <c>null</c>.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public void WriteTo (Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public void WriteTo (Stream stream, CancellationToken cancellationToken = default)
 		{
 			WriteTo (FormatOptions.Default, stream, false, cancellationToken);
 		}
@@ -597,13 +773,16 @@ namespace MimeKit {
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="stream"/> is <c>null</c>.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public Task WriteToAsync (Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public Task WriteToAsync (Stream stream, CancellationToken cancellationToken = default)
 		{
 			return WriteToAsync (FormatOptions.Default, stream, false, cancellationToken);
 		}
@@ -627,6 +806,9 @@ namespace MimeKit {
 		/// <paramref name="fileName"/> is a zero-length string, contains only white space, or
 		/// contains one or more invalid characters.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
@@ -642,16 +824,18 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public void WriteTo (FormatOptions options, string fileName, bool contentOnly, CancellationToken cancellationToken = default (CancellationToken))
+		public void WriteTo (FormatOptions options, string fileName, bool contentOnly, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (fileName == null)
+			if (fileName is null)
 				throw new ArgumentNullException (nameof (fileName));
 
-			using (var stream = File.Open (fileName, FileMode.Create, FileAccess.Write))
+			using (var stream = File.Open (fileName, FileMode.Create, FileAccess.Write)) {
 				WriteTo (options, stream, contentOnly, cancellationToken);
+				stream.Flush ();
+			}
 		}
 
 		/// <summary>
@@ -674,6 +858,9 @@ namespace MimeKit {
 		/// <paramref name="fileName"/> is a zero-length string, contains only white space, or
 		/// contains one or more invalid characters.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
@@ -689,16 +876,18 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public async Task WriteToAsync (FormatOptions options, string fileName, bool contentOnly, CancellationToken cancellationToken = default (CancellationToken))
+		public async Task WriteToAsync (FormatOptions options, string fileName, bool contentOnly, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (fileName == null)
+			if (fileName is null)
 				throw new ArgumentNullException (nameof (fileName));
 
-			using (var stream = File.Open (fileName, FileMode.Create, FileAccess.Write))
+			using (var stream = File.Open (fileName, FileMode.Create, FileAccess.Write)) {
 				await WriteToAsync (options, stream, contentOnly, cancellationToken).ConfigureAwait (false);
+				await stream.FlushAsync (cancellationToken).ConfigureAwait (false);
+			}
 		}
 
 		/// <summary>
@@ -719,6 +908,9 @@ namespace MimeKit {
 		/// <paramref name="fileName"/> is a zero-length string, contains only white space, or
 		/// contains one or more invalid characters.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
@@ -734,18 +926,9 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public void WriteTo (FormatOptions options, string fileName, CancellationToken cancellationToken = default (CancellationToken))
+		public void WriteTo (FormatOptions options, string fileName, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
-				throw new ArgumentNullException (nameof (options));
-
-			if (fileName == null)
-				throw new ArgumentNullException (nameof (fileName));
-
-			using (var stream = File.Open (fileName, FileMode.Create, FileAccess.Write)) {
-				WriteTo (options, stream, false, cancellationToken);
-				stream.Flush ();
-			}
+			WriteTo (options, fileName, false, cancellationToken);
 		}
 
 		/// <summary>
@@ -767,6 +950,9 @@ namespace MimeKit {
 		/// <paramref name="fileName"/> is a zero-length string, contains only white space, or
 		/// contains one or more invalid characters.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
@@ -782,18 +968,9 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public async Task WriteToAsync (FormatOptions options, string fileName, CancellationToken cancellationToken = default (CancellationToken))
+		public Task WriteToAsync (FormatOptions options, string fileName, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
-				throw new ArgumentNullException (nameof (options));
-
-			if (fileName == null)
-				throw new ArgumentNullException (nameof (fileName));
-
-			using (var stream = File.Open (fileName, FileMode.Create, FileAccess.Write)) {
-				await WriteToAsync (options, stream, false, cancellationToken).ConfigureAwait (false);
-				await stream.FlushAsync (cancellationToken).ConfigureAwait (false);
-			}
+			return WriteToAsync (options, fileName, false, cancellationToken);
 		}
 
 		/// <summary>
@@ -812,6 +989,9 @@ namespace MimeKit {
 		/// <paramref name="fileName"/> is a zero-length string, contains only white space, or
 		/// contains one or more invalid characters.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
@@ -827,7 +1007,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public void WriteTo (string fileName, bool contentOnly, CancellationToken cancellationToken = default (CancellationToken))
+		public void WriteTo (string fileName, bool contentOnly, CancellationToken cancellationToken = default)
 		{
 			WriteTo (FormatOptions.Default, fileName, contentOnly, cancellationToken);
 		}
@@ -849,6 +1029,9 @@ namespace MimeKit {
 		/// <paramref name="fileName"/> is a zero-length string, contains only white space, or
 		/// contains one or more invalid characters.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
@@ -864,7 +1047,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public Task WriteToAsync (string fileName, bool contentOnly, CancellationToken cancellationToken = default (CancellationToken))
+		public Task WriteToAsync (string fileName, bool contentOnly, CancellationToken cancellationToken = default)
 		{
 			return WriteToAsync (FormatOptions.Default, fileName, contentOnly, cancellationToken);
 		}
@@ -884,6 +1067,9 @@ namespace MimeKit {
 		/// <paramref name="fileName"/> is a zero-length string, contains only white space, or
 		/// contains one or more invalid characters.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
@@ -899,7 +1085,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public void WriteTo (string fileName, CancellationToken cancellationToken = default (CancellationToken))
+		public void WriteTo (string fileName, CancellationToken cancellationToken = default)
 		{
 			WriteTo (FormatOptions.Default, fileName, cancellationToken);
 		}
@@ -920,6 +1106,9 @@ namespace MimeKit {
 		/// <paramref name="fileName"/> is a zero-length string, contains only white space, or
 		/// contains one or more invalid characters.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeEntity"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
@@ -935,7 +1124,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public Task WriteToAsync (string fileName, CancellationToken cancellationToken = default (CancellationToken))
+		public Task WriteToAsync (string fileName, CancellationToken cancellationToken = default)
 		{
 			return WriteToAsync (FormatOptions.Default, fileName, cancellationToken);
 		}
@@ -1041,61 +1230,28 @@ namespace MimeKit {
 		/// <param name="header">The header being added, changed or removed.</param>
 		protected virtual void OnHeadersChanged (HeaderListChangedAction action, Header header)
 		{
-			int index = 0;
-			string text;
-
 			switch (action) {
 			case HeaderListChangedAction.Added:
 			case HeaderListChangedAction.Changed:
-				switch (header.Id) {
-				case HeaderId.ContentDisposition:
-					if (disposition != null)
-						disposition.Changed -= ContentDispositionChanged;
-
-					if (ContentDisposition.TryParse (Headers.Options, header.RawValue, out disposition))
-						disposition.Changed += ContentDispositionChanged;
-					break;
-				case HeaderId.ContentLocation:
-					text = header.Value.Trim ();
-
-					if (Uri.IsWellFormedUriString (text, UriKind.Absolute))
-						location = new Uri (text, UriKind.Absolute);
-					else if (Uri.IsWellFormedUriString (text, UriKind.Relative))
-						location = new Uri (text, UriKind.Relative);
-					else
-						location = null;
-					break;
-				case HeaderId.ContentBase:
-					text = header.Value.Trim ();
-
-					if (Uri.IsWellFormedUriString (text, UriKind.Absolute))
-						baseUri = new Uri (text, UriKind.Absolute);
-					else
-						baseUri = null;
-					break;
-				case HeaderId.ContentId:
-					if (ParseUtils.TryParseMsgId (header.RawValue, ref index, header.RawValue.Length, false, false, out string msgid))
-						contentId = msgid;
-					else
-						contentId = null;
-					break;
-				}
-				break;
 			case HeaderListChangedAction.Removed:
 				switch (header.Id) {
 				case HeaderId.ContentDisposition:
 					if (disposition != null)
 						disposition.Changed -= ContentDispositionChanged;
 
+					LazyLoaded &= ~LazyLoadedFields.ContentDisposition;
 					disposition = null;
 					break;
 				case HeaderId.ContentLocation:
+					LazyLoaded &= ~LazyLoadedFields.ContentLocation;
 					location = null;
 					break;
 				case HeaderId.ContentBase:
+					LazyLoaded &= ~LazyLoadedFields.ContentBase;
 					baseUri = null;
 					break;
 				case HeaderId.ContentId:
+					LazyLoaded &= ~LazyLoadedFields.ContentId;
 					contentId = null;
 					break;
 				}
@@ -1104,13 +1260,12 @@ namespace MimeKit {
 				if (disposition != null)
 					disposition.Changed -= ContentDispositionChanged;
 
+				LazyLoaded = LazyLoadedFields.None;
 				disposition = null;
 				contentId = null;
 				location = null;
 				baseUri = null;
 				break;
-			default:
-				throw new ArgumentOutOfRangeException (nameof (action));
 			}
 		}
 
@@ -1118,6 +1273,38 @@ namespace MimeKit {
 		{
 			OnHeadersChanged (e.Action, e.Header);
 		}
+
+		#region IDisposable implementation
+
+		/// <summary>
+		/// Releases the unmanaged resources used by the <see cref="MimeEntity"/> and
+		/// optionally releases the managed resources.
+		/// </summary>
+		/// <remarks>
+		/// Releases the unmanaged resources used by the <see cref="MimeEntity"/> and
+		/// optionally releases the managed resources.
+		/// </remarks>
+		/// <param name="disposing"><c>true</c> to release both managed and unmanaged resources;
+		/// <c>false</c> to release only the unmanaged resources.</param>
+		protected virtual void Dispose (bool disposing)
+		{
+		}
+
+		/// <summary>
+		/// Releases all resources used by the <see cref="MimeEntity"/> object.
+		/// </summary>
+		/// <remarks>Call <see cref="Dispose()"/> when you are finished using the <see cref="MimeEntity"/>. The
+		/// <see cref="Dispose()"/> method leaves the <see cref="MimeEntity"/> in an unusable state. After
+		/// calling <see cref="Dispose()"/>, you must release all references to the <see cref="MimeEntity"/> so
+		/// the garbage collector can reclaim the memory that the <see cref="MimeEntity"/> was occupying.</remarks>
+		public void Dispose ()
+		{
+			Dispose (true);
+			IsDisposed = true;
+			GC.SuppressFinalize (this);
+		}
+
+		#endregion
 
 		/// <summary>
 		/// Load a <see cref="MimeEntity"/> from the specified stream.
@@ -1150,12 +1337,12 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static MimeEntity Load (ParserOptions options, Stream stream, bool persistent, CancellationToken cancellationToken = default (CancellationToken))
+		public static MimeEntity Load (ParserOptions options, Stream stream, bool persistent, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (stream == null)
+			if (stream is null)
 				throw new ArgumentNullException (nameof (stream));
 
 			var parser = new MimeParser (options, stream, MimeFormat.Entity, persistent);
@@ -1194,12 +1381,12 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static Task<MimeEntity> LoadAsync (ParserOptions options, Stream stream, bool persistent, CancellationToken cancellationToken = default (CancellationToken))
+		public static Task<MimeEntity> LoadAsync (ParserOptions options, Stream stream, bool persistent, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (stream == null)
+			if (stream is null)
 				throw new ArgumentNullException (nameof (stream));
 
 			var parser = new MimeParser (options, stream, MimeFormat.Entity, persistent);
@@ -1232,7 +1419,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static MimeEntity Load (ParserOptions options, Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public static MimeEntity Load (ParserOptions options, Stream stream, CancellationToken cancellationToken = default)
 		{
 			return Load (options, stream, false, cancellationToken);
 		}
@@ -1262,7 +1449,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static Task<MimeEntity> LoadAsync (ParserOptions options, Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public static Task<MimeEntity> LoadAsync (ParserOptions options, Stream stream, CancellationToken cancellationToken = default)
 		{
 			return LoadAsync (options, stream, false, cancellationToken);
 		}
@@ -1295,7 +1482,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static MimeEntity Load (Stream stream, bool persistent, CancellationToken cancellationToken = default (CancellationToken))
+		public static MimeEntity Load (Stream stream, bool persistent, CancellationToken cancellationToken = default)
 		{
 			return Load (ParserOptions.Default, stream, persistent, cancellationToken);
 		}
@@ -1309,7 +1496,7 @@ namespace MimeKit {
 		/// <para>If <paramref name="persistent"/> is <c>true</c> and <paramref name="stream"/> is seekable, then
 		/// the <see cref="MimeParser"/> will not copy the content of <see cref="MimePart"/>s into memory. Instead,
 		/// it will use a <see cref="BoundStream"/> to reference a substream of <paramref name="stream"/>.
-		/// This has the potential to not only save mmeory usage, but also improve <see cref="MimeParser"/>
+		/// This has the potential to not only save memory usage, but also improve <see cref="MimeParser"/>
 		/// performance.</para>
 		/// </remarks>
 		/// <returns>The parsed MIME entity.</returns>
@@ -1328,7 +1515,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static Task<MimeEntity> LoadAsync (Stream stream, bool persistent, CancellationToken cancellationToken = default (CancellationToken))
+		public static Task<MimeEntity> LoadAsync (Stream stream, bool persistent, CancellationToken cancellationToken = default)
 		{
 			return LoadAsync (ParserOptions.Default, stream, persistent, cancellationToken);
 		}
@@ -1355,7 +1542,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static MimeEntity Load (Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public static MimeEntity Load (Stream stream, CancellationToken cancellationToken = default)
 		{
 			return Load (ParserOptions.Default, stream, false, cancellationToken);
 		}
@@ -1382,7 +1569,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static Task<MimeEntity> LoadAsync (Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public static Task<MimeEntity> LoadAsync (Stream stream, CancellationToken cancellationToken = default)
 		{
 			return LoadAsync (ParserOptions.Default, stream, false, cancellationToken);
 		}
@@ -1425,12 +1612,12 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static MimeEntity Load (ParserOptions options, string fileName, CancellationToken cancellationToken = default (CancellationToken))
+		public static MimeEntity Load (ParserOptions options, string fileName, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (fileName == null)
+			if (fileName is null)
 				throw new ArgumentNullException (nameof (fileName));
 
 			using (var stream = File.OpenRead (fileName))
@@ -1475,12 +1662,12 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static async Task<MimeEntity> LoadAsync (ParserOptions options, string fileName, CancellationToken cancellationToken = default (CancellationToken))
+		public static async Task<MimeEntity> LoadAsync (ParserOptions options, string fileName, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (fileName == null)
+			if (fileName is null)
 				throw new ArgumentNullException (nameof (fileName));
 
 			using (var stream = File.OpenRead (fileName))
@@ -1522,13 +1709,13 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static MimeEntity Load (string fileName, CancellationToken cancellationToken = default (CancellationToken))
+		public static MimeEntity Load (string fileName, CancellationToken cancellationToken = default)
 		{
 			return Load (ParserOptions.Default, fileName, cancellationToken);
 		}
 
 		/// <summary>
-		/// Asynchroinously load a <see cref="MimeEntity"/> from the specified file.
+		/// Asynchronously load a <see cref="MimeEntity"/> from the specified file.
 		/// </summary>
 		/// <remarks>
 		/// Loads a <see cref="MimeEntity"/> from the file at the give file path,
@@ -1562,7 +1749,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static Task<MimeEntity> LoadAsync (string fileName, CancellationToken cancellationToken = default (CancellationToken))
+		public static Task<MimeEntity> LoadAsync (string fileName, CancellationToken cancellationToken = default)
 		{
 			return LoadAsync (ParserOptions.Default, fileName, cancellationToken);
 		}
@@ -1595,28 +1782,29 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static MimeEntity Load (ParserOptions options, ContentType contentType, Stream content, CancellationToken cancellationToken = default (CancellationToken))
+		public static MimeEntity Load (ParserOptions options, ContentType contentType, Stream content, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (contentType == null)
+			if (contentType is null)
 				throw new ArgumentNullException (nameof (contentType));
 
-			if (content == null)
+			if (content is null)
 				throw new ArgumentNullException (nameof (content));
 
-			var format = FormatOptions.CloneDefault ();
+			var format = FormatOptions.Default.Clone ();
 			format.NewLineFormat = NewLineFormat.Dos;
 
 			var encoded = contentType.Encode (format, Encoding.UTF8);
-			var header = string.Format ("Content-Type:{0}\r\n", encoded);
-			var chained = new ChainedStream ();
+			var header = $"Content-Type:{encoded}\r\n";
 
-			chained.Add (new MemoryStream (Encoding.UTF8.GetBytes (header), false));
-			chained.Add (content);
+			using (var chained = new ChainedStream ()) {
+				chained.Add (new MemoryStream (Encoding.UTF8.GetBytes (header), false));
+				chained.Add (content, true);
 
-			return Load (options, chained, cancellationToken);
+				return Load (options, chained, false, cancellationToken);
+			}
 		}
 
 		/// <summary>
@@ -1647,28 +1835,29 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static Task<MimeEntity> LoadAsync (ParserOptions options, ContentType contentType, Stream content, CancellationToken cancellationToken = default (CancellationToken))
+		public static async Task<MimeEntity> LoadAsync (ParserOptions options, ContentType contentType, Stream content, CancellationToken cancellationToken = default)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (contentType == null)
+			if (contentType is null)
 				throw new ArgumentNullException (nameof (contentType));
 
-			if (content == null)
+			if (content is null)
 				throw new ArgumentNullException (nameof (content));
 
-			var format = FormatOptions.CloneDefault ();
+			var format = FormatOptions.Default.Clone ();
 			format.NewLineFormat = NewLineFormat.Dos;
 
 			var encoded = contentType.Encode (format, Encoding.UTF8);
-			var header = string.Format ("Content-Type:{0}\r\n", encoded);
-			var chained = new ChainedStream ();
+			var header = $"Content-Type:{encoded}\r\n";
 
-			chained.Add (new MemoryStream (Encoding.UTF8.GetBytes (header), false));
-			chained.Add (content);
+			using (var chained = new ChainedStream ()) {
+				chained.Add (new MemoryStream (Encoding.UTF8.GetBytes (header), false));
+				chained.Add (content, true);
 
-			return LoadAsync (options, chained, cancellationToken);
+				return await LoadAsync (options, chained, false, cancellationToken).ConfigureAwait (false);
+			}
 		}
 
 		/// <summary>
@@ -1679,7 +1868,7 @@ namespace MimeKit {
 		/// where the headers are parsed separately from the content.
 		/// </remarks>
 		/// <example>
-		/// <code language="c#" source="Examples\MultipartFormDataExample.cs" region="ParseMultipartFormDataSimple" />
+		/// <code language="c#" source="Examples\MultipartFormDataExamples.cs" region="ParseMultipartFormDataSimple" />
 		/// </example>
 		/// <returns>The parsed MIME entity.</returns>
 		/// <param name="contentType">The Content-Type of the stream.</param>
@@ -1699,7 +1888,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static MimeEntity Load (ContentType contentType, Stream content, CancellationToken cancellationToken = default (CancellationToken))
+		public static MimeEntity Load (ContentType contentType, Stream content, CancellationToken cancellationToken = default)
 		{
 			return Load (ParserOptions.Default, contentType, content, cancellationToken);
 		}
@@ -1729,7 +1918,7 @@ namespace MimeKit {
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public static Task<MimeEntity> LoadAsync (ContentType contentType, Stream content, CancellationToken cancellationToken = default (CancellationToken))
+		public static Task<MimeEntity> LoadAsync (ContentType contentType, Stream content, CancellationToken cancellationToken = default)
 		{
 			return LoadAsync (ParserOptions.Default, contentType, content, cancellationToken);
 		}

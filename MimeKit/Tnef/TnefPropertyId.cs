@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,6 +23,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 //
+
+#pragma warning disable CA1069 // Enums values should not be duplicated
 
 namespace MimeKit.Tnef {
 	/// <summary>
@@ -581,6 +583,11 @@ namespace MimeKit.Tnef {
 		/// The MAPI property PR_CREATION_VERSION.
 		/// </summary>
 		CreationVersion                          = 0x0E19,
+
+		/// <summary>
+		/// The MAPI property PR_CREATOR_SMTP_ADDRESS.
+		/// </summary>
+		CreatorSmtpAddress                       = 0x5D0A,
 
 		/// <summary>
 		/// The MAPI property PR_CURRENT_VERSION.
@@ -1151,6 +1158,11 @@ namespace MimeKit.Tnef {
 		/// The MAPI property PR_LAST_MODIFIER_NAME.
 		/// </summary>
 		LastModifierName                         = 0x3FFA,
+
+		/// <summary>
+		/// THe MAPI property PR_LAST_MODIFIER_SMTP_ADDRESS.
+		/// </summary>
+		LastModifierSmtpAddress                  = 0x5D0B,
 
 		/// <summary>
 		/// The MAPI property PR_LATEST_DELIVERY_TIME.
@@ -2258,6 +2270,11 @@ namespace MimeKit.Tnef {
 		SenderSimpleDispName                     = 0x4030,
 
 		/// <summary>
+		/// The MAPI property PR_SENDER_SMTP_ADDRESS.
+		/// </summary>
+		SenderSmtpAddress                        = 0x5D01,
+
+		/// <summary>
 		/// The MAPI property PR_SEND_INTERNET_ENCODING.
 		/// </summary>
 		SendInternetEncoding                     = 0x3A71,
@@ -2568,3 +2585,5 @@ namespace MimeKit.Tnef {
 		Ypos                                     = 0x3F06,
 	}
 }
+
+#pragma warning restore

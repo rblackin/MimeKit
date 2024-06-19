@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -77,6 +77,7 @@ namespace MimeKit {
 		const int DefaultMaxLineLength = 78;
 
 		ParameterEncodingMethod parameterEncodingMethod;
+		bool alwaysQuoteParameterValues;
 		bool allowMixedHeaderCharsets;
 		NewLineFormat newLineFormat;
 		bool verifyingSignature;
@@ -95,7 +96,7 @@ namespace MimeKit {
 		public static readonly FormatOptions Default;
 
 		/// <summary>
-		/// Gets or sets the maximum line length used by the encoders. The encoders
+		/// Get or set the maximum line length used by the encoders. The encoders
 		/// use this value to determine where to place line breaks.
 		/// </summary>
 		/// <remarks>
@@ -141,7 +142,7 @@ namespace MimeKit {
 				if (this == Default)
 					throw new InvalidOperationException ("The default formatting options cannot be changed.");
 
-				switch (newLineFormat) {
+				switch (value) {
 				case NewLineFormat.Unix:
 				case NewLineFormat.Dos:
 					newLineFormat = value;
@@ -301,6 +302,27 @@ namespace MimeKit {
 			}
 		}
 
+		/// <summary>
+		/// Get or set whether Content-Type and Content-Disposition parameter values should always be quoted even when they don't need to be.
+		/// </summary>
+		/// <remarks>
+		/// <para>Gets or sets whether Content-Type and Content-Disposition parameter values should always be quoted even when they don't need to be.</para>
+		/// <para>Technically, Content-Type and Content-Disposition parameter values only require quoting when they contain characters
+		/// that have special meaning to a MIME parser. However, for compatibility with email processing solutions that do not properly
+		/// adhere to the MIME specifications, this property can be used to force MimeKit to quote parameter values that would normally
+		/// not require quoting.</para>
+		/// </remarks>
+		/// <value><c>true</c> if Content-Type and Content-Disposition parameters should always be quoted; otherwise, <c>false</c>.</value>
+		public bool AlwaysQuoteParameterValues {
+			get { return alwaysQuoteParameterValues; }
+			set {
+				if (this == Default)
+					throw new InvalidOperationException ("The default formatting options cannot be changed.");
+
+				alwaysQuoteParameterValues = value;
+			}
+		}
+
 		static FormatOptions ()
 		{
 			Default = new FormatOptions ();
@@ -317,6 +339,7 @@ namespace MimeKit {
 		{
 			HiddenHeaders = new HashSet<HeaderId> ();
 			parameterEncodingMethod = ParameterEncodingMethod.Rfc2231;
+			alwaysQuoteParameterValues = false;
 			maxLineLength = DefaultMaxLineLength;
 			allowMixedHeaderCharsets = false;
 			ensureNewLine = false;
@@ -329,7 +352,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Clones an instance of <see cref="FormatOptions"/>.
+		/// Clone an instance of <see cref="FormatOptions"/>.
 		/// </summary>
 		/// <remarks>
 		/// Clones the formatting options.
@@ -337,30 +360,17 @@ namespace MimeKit {
 		/// <returns>An exact copy of the <see cref="FormatOptions"/>.</returns>
 		public FormatOptions Clone ()
 		{
-			var options = new FormatOptions ();
-			options.maxLineLength = maxLineLength;
-			options.newLineFormat = newLineFormat;
-			options.ensureNewLine = ensureNewLine;
-			options.HiddenHeaders = new HashSet<HeaderId> (HiddenHeaders);
-			options.allowMixedHeaderCharsets = allowMixedHeaderCharsets;
-			options.parameterEncodingMethod = parameterEncodingMethod;
-			options.verifyingSignature = verifyingSignature;
-			options.international = international;
-			return options;
-		}
-
-		/// <summary>
-		/// Get the default formatting options in a thread-safe way.
-		/// </summary>
-		/// <remarks>
-		/// Gets the default formatting options in a thread-safe way.
-		/// </remarks>
-		/// <returns>The default formatting options.</returns>
-		internal static FormatOptions CloneDefault ()
-		{
-			lock (Default) {
-				return Default.Clone ();
-			}
+			return new FormatOptions {
+				maxLineLength = maxLineLength,
+				newLineFormat = newLineFormat,
+				ensureNewLine = ensureNewLine,
+				HiddenHeaders = new HashSet<HeaderId> (HiddenHeaders),
+				allowMixedHeaderCharsets = allowMixedHeaderCharsets,
+				parameterEncodingMethod = parameterEncodingMethod,
+				alwaysQuoteParameterValues = alwaysQuoteParameterValues,
+				verifyingSignature = verifyingSignature,
+				international = international
+			};
 		}
 	}
 }

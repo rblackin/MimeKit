@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,16 +24,11 @@
 // THE SOFTWARE.
 //
 
-using System;
-using System.IO;
-using System.Threading.Tasks;
-
-using NUnit.Framework;
+using System.Text;
 
 using MimeKit;
 
-namespace UnitTests
-{
+namespace UnitTests {
 	class BrokenTextHtmlPart : TextPart
 	{
 		public BrokenTextHtmlPart () : base ("html")
@@ -67,11 +62,49 @@ namespace UnitTests
 		}
 
 		[Test]
+		public void TestParsingOfApplicationRtf ()
+		{
+			const string rawMimeData = @"Content-type: application/rtf
+
+This is make-believe rtf data...";
+
+			using (var stream = new MemoryStream (Encoding.UTF8.GetBytes (rawMimeData))) {
+				var part = MimeEntity.Load (stream);
+
+				Assert.That (part, Is.InstanceOf<TextPart> (), "Expected the application/rtf part to be parsed as TextPart.");
+				var text = (TextPart) part;
+				Assert.That (text.IsRichText, Is.True, "IsRichText");
+			}
+		}
+
+		[Test]
+		public void TestParsingOfMessageGlobalHeaders ()
+		{
+			const string rawMimeData = @"Content-type: message/global-headers
+
+Date: Fri, 22 Jan 2016 8:44:05 -0500 (EST)
+From: MimeKit Unit Tests <unit.tests@mimekit.org>
+To: MimeKit Unit Tests <unit.tests@mimekit.org>
+MIME-Version: 1.0
+Content-type: text/plain
+";
+
+			using (var stream = new MemoryStream (Encoding.UTF8.GetBytes (rawMimeData))) {
+				var part = MimeEntity.Load (stream);
+
+				Assert.That (part, Is.InstanceOf<TextRfc822Headers> (), "Expected the message/global-headers part to be parsed as TextRfc822Headers.");
+			}
+		}
+
+		[Test]
 		public void TestParsingOfCustomType ()
 		{
 			var options = ParserOptions.Default.Clone ();
 
 			options.RegisterMimeType ("text/html", typeof (CustomTextHtmlPart));
+
+			// now clone the options to make sure that the cloned copy still has the registered custom type
+			options = options.Clone ();
 
 			using (var stream = new MemoryStream ()) {
 				var text = new TextPart ("html") { Text = "<html>this is some html and stuff</html>" };
@@ -81,7 +114,7 @@ namespace UnitTests
 
 				var html = MimeEntity.Load (options, stream);
 
-				Assert.IsInstanceOf<CustomTextHtmlPart> (html, "Expected the text/html part to use our custom type.");
+				Assert.That (html, Is.InstanceOf<CustomTextHtmlPart> (), "Expected the text/html part to use our custom type.");
 			}
 		}
 
@@ -92,6 +125,9 @@ namespace UnitTests
 
 			options.RegisterMimeType ("text/html", typeof (CustomTextHtmlPart));
 
+			// now clone the options to make sure that the cloned copy still has the registered custom type
+			options = options.Clone ();
+
 			using (var stream = new MemoryStream ()) {
 				var text = new TextPart ("html") { Text = "<html>this is some html and stuff</html>" };
 
@@ -100,7 +136,7 @@ namespace UnitTests
 
 				var html = await MimeEntity.LoadAsync (options, stream);
 
-				Assert.IsInstanceOf<CustomTextHtmlPart> (html, "Expected the text/html part to use our custom type.");
+				Assert.That (html, Is.InstanceOf<CustomTextHtmlPart> (), "Expected the text/html part to use our custom type.");
 			}
 		}
 	}

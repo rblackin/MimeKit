@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -130,7 +130,7 @@ namespace MimeKit.Utils
 					spinLock.Exit (false);
 			}
 
-			if (buffer == null)
+			if (buffer is null)
 				buffer = new byte[BufferSize];
 			else if (clear)
 				Array.Clear (buffer, 0, BufferSize);
@@ -160,7 +160,7 @@ namespace MimeKit.Utils
 		{
 			bool locked = false;
 
-			if (buffer == null)
+			if (buffer is null)
 				throw new ArgumentNullException (nameof (buffer));
 
 			if (buffer.Length != BufferSize)

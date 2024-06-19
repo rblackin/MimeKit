@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,8 +24,7 @@
 // THE SOFTWARE.
 //
 
-using System.Reflection;
-
+using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Running;
 
 namespace Benchmarks {
@@ -33,7 +32,14 @@ namespace Benchmarks {
 	{
 		public static void Main (string[] args)
 		{
-			var summary = BenchmarkRunner.Run (typeof (Program).Assembly);
+#if DEBUG
+			var config = new DebugInProcessConfig ()
+				.WithOptions (ConfigOptions.DisableOptimizationsValidator);
+#else
+			var config = ManualConfig.CreateMinimumViable ();
+#endif
+
+			var summary = BenchmarkRunner.Run (typeof (Program).Assembly, config);
 		}
 	}
 }

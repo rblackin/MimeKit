@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -47,7 +47,7 @@ namespace MimeKit {
 		/// </exception>
 		public MimeMessageBeginEventArgs (MimeMessage message)
 		{
-			if (message == null)
+			if (message is null)
 				throw new ArgumentNullException (nameof (message));
 
 			Message = message;
@@ -68,10 +68,10 @@ namespace MimeKit {
 		/// </exception>
 		public MimeMessageBeginEventArgs (MimeMessage message, MessagePart parent)
 		{
-			if (message == null)
+			if (message is null)
 				throw new ArgumentNullException (nameof (message));
 
-			if (parent == null)
+			if (parent is null)
 				throw new ArgumentNullException (nameof (parent));
 
 			Message = message;
@@ -112,6 +112,6 @@ namespace MimeKit {
 		/// Gets or sets the line number of the beginning of the message.
 		/// </remarks>
 		/// <value>The line number.</value>
-		internal int LineNumber { get; set; }
+		public int LineNumber { get; set; }
 	}
 }

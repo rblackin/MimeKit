@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -25,6 +25,7 @@
 //
 
 using System;
+using System.Linq;
 using System.Collections.Generic;
 
 using Org.BouncyCastle.Cms;
@@ -34,8 +35,6 @@ using Org.BouncyCastle.Asn1;
 using Org.BouncyCastle.Asn1.Cms;
 using Org.BouncyCastle.Asn1.Smime;
 using Org.BouncyCastle.Asn1.X509;
-
-using MimeKit.Utils;
 
 namespace MimeKit.Cryptography {
 	/// <summary>
@@ -48,15 +47,6 @@ namespace MimeKit.Cryptography {
 	{
 		DigitalSignatureVerifyException vex;
 		bool? valid;
-
-		static DateTime ToAdjustedDateTime (DerUtcTime time)
-		{
-			//try {
-			//	return time.ToAdjustedDateTime ();
-			//} catch {
-			return DateUtils.Parse (time.AdjustedTimeString, "yyyyMMddHHmmsszzz");
-			//}
-		}
 
 		/// <summary>
 		/// Initialize a new instance of the <see cref="SecureMimeDigitalSignature"/> class.
@@ -77,24 +67,22 @@ namespace MimeKit.Cryptography {
 			SignerInfo = signerInfo;
 
 			var algorithms = new List<EncryptionAlgorithm> ();
-			DigestAlgorithm digestAlgo;
 
 			if (signerInfo.SignedAttributes != null) {
 				Asn1EncodableVector vector = signerInfo.SignedAttributes.GetAll (CmsAttributes.SigningTime);
-				foreach (Org.BouncyCastle.Asn1.Cms.Attribute attr in vector) {
-					var signingTime = (DerUtcTime) ((DerSet) attr.AttrValues)[0];
-					CreationDate = ToAdjustedDateTime (signingTime);
+				foreach (var attr in vector.OfType<Org.BouncyCastle.Asn1.Cms.Attribute> ()) {
+					var signingTime = Org.BouncyCastle.Asn1.Cms.Time.GetInstance (attr.AttrValues[0]);
+					CreationDate = signingTime.ToDateTime ();
 					break;
 				}
 
 				vector = signerInfo.SignedAttributes.GetAll (SmimeAttributes.SmimeCapabilities);
-				foreach (Org.BouncyCastle.Asn1.Cms.Attribute attr in vector) {
-					foreach (Asn1Sequence sequence in attr.AttrValues) {
+				foreach (var attr in vector.OfType<Org.BouncyCastle.Asn1.Cms.Attribute> ()) {
+					foreach (var sequence in attr.AttrValues.OfType<Asn1Sequence> ()) {
 						for (int i = 0; i < sequence.Count; i++) {
 							var identifier = AlgorithmIdentifier.GetInstance (sequence[i]);
-							EncryptionAlgorithm algorithm;
 
-							if (BouncyCastleSecureMimeContext.TryGetEncryptionAlgorithm (identifier, out algorithm))
+							if (BouncyCastleSecureMimeContext.TryGetEncryptionAlgorithm (identifier, out var algorithm))
 								algorithms.Add (algorithm);
 						}
 					}
@@ -103,7 +91,7 @@ namespace MimeKit.Cryptography {
 
 			EncryptionAlgorithms = algorithms.ToArray ();
 
-			if (BouncyCastleSecureMimeContext.TryGetDigestAlgorithm (signerInfo.DigestAlgorithmID, out digestAlgo))
+			if (BouncyCastleSecureMimeContext.TryGetDigestAlgorithm (signerInfo.DigestAlgorithmID, out var digestAlgo))
 				DigestAlgorithm = digestAlgo;
 
 			if (certificate != null)

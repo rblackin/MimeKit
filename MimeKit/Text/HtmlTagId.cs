@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -25,8 +25,6 @@
 //
 
 using System;
-using System.Linq;
-using System.Reflection;
 using System.Collections.Generic;
 
 using MimeKit.Utils;
@@ -358,9 +356,8 @@ namespace MimeKit.Text {
 		IFrame,
 
 		/// <summary>
-		/// The HTML &lt;image&gt; tag.
+		/// The HTML &lt;img&gt; tag.
 		/// </summary>
-		[HtmlTagName ("img")]
 		Image,
 
 		/// <summary>
@@ -719,18 +716,6 @@ namespace MimeKit.Text {
 		Xmp,
 	}
 
-	[AttributeUsage (AttributeTargets.Field)]
-	class HtmlTagNameAttribute : Attribute {
-		public HtmlTagNameAttribute (string name)
-		{
-			Name = name;
-		}
-
-		public string Name {
-			get; protected set;
-		}
-	}
-
 	/// <summary>
 	/// <see cref="HtmlTagId"/> extension methods.
 	/// </summary>
@@ -739,16 +724,152 @@ namespace MimeKit.Text {
 	/// </remarks>
 	public static class HtmlTagIdExtensions
 	{
-		static readonly Dictionary<string, HtmlTagId> TagNameToId;
+		static readonly string[] TagNames = new string[] {
+			"a",
+			"abbr",
+			"acronym",
+			"address",
+			"applet",
+			"area",
+			"article",
+			"aside",
+			"audio",
+			"b",
+			"base",
+			"basefont",
+			"bdi",
+			"bdo",
+			"bgsound",
+			"big",
+			"blink",
+			"blockquote",
+			"body",
+			"br",
+			"button",
+			"canvas",
+			"caption",
+			"center",
+			"cite",
+			"code",
+			"col",
+			"colgroup",
+			"command",
+			"!",
+			"datalist",
+			"dd",
+			"del",
+			"details",
+			"dfn",
+			"dialog",
+			"dir",
+			"div",
+			"dl",
+			"dt",
+			"em",
+			"embed",
+			"fieldset",
+			"figcaption",
+			"figure",
+			"font",
+			"footer",
+			"form",
+			"frame",
+			"frameset",
+			"h1",
+			"h2",
+			"h3",
+			"h4",
+			"h5",
+			"h6",
+			"head",
+			"header",
+			"hr",
+			"html",
+			"i",
+			"iframe",
+			"img",
+			"input",
+			"ins",
+			"isindex",
+			"kbd",
+			"keygen",
+			"label",
+			"legend",
+			"li",
+			"link",
+			"listing",
+			"main",
+			"map",
+			"mark",
+			"marquee",
+			"menu",
+			"menuitem",
+			"meta",
+			"meter",
+			"nav",
+			"nextid",
+			"nobr",
+			"noembed",
+			"noframes",
+			"noscript",
+			"object",
+			"ol",
+			"optgroup",
+			"option",
+			"output",
+			"p",
+			"param",
+			"plaintext",
+			"pre",
+			"progress",
+			"q",
+			"rp",
+			"rt",
+			"ruby",
+			"s",
+			"samp",
+			"script",
+			"section",
+			"select",
+			"small",
+			"source",
+			"span",
+			"strike",
+			"strong",
+			"style",
+			"sub",
+			"summary",
+			"sup",
+			"table",
+			"tbody",
+			"td",
+			"textarea",
+			"tfoot",
+			"th",
+			"thead",
+			"time",
+			"title",
+			"tr",
+			"track",
+			"tt",
+			"u",
+			"ul",
+			"var",
+			"video",
+			"wbr",
+			"xml",
+			"xmp",
+		};
+		static readonly Dictionary<string, HtmlTagId> IdMapping;
 
 		static HtmlTagIdExtensions ()
 		{
 			var values = (HtmlTagId[]) Enum.GetValues (typeof (HtmlTagId));
 
-			TagNameToId = new Dictionary<string, HtmlTagId> (values.Length - 1, MimeUtils.OrdinalIgnoreCase);
+			IdMapping = new Dictionary<string, HtmlTagId> (values.Length - 1, MimeUtils.OrdinalIgnoreCase);
 
-			for (int i = 0; i < values.Length - 1; i++)
-				TagNameToId.Add (values[i].ToHtmlTagName (), values[i]);
+			for (int i = 1; i < values.Length; i++)
+				IdMapping.Add (values[i].ToHtmlTagName (), values[i]);
 		}
 
 		/// <summary>
@@ -761,23 +882,12 @@ namespace MimeKit.Text {
 		/// <param name="value">The enum value.</param>
 		public static string ToHtmlTagName (this HtmlTagId value)
 		{
-			if (value == HtmlTagId.Comment)
-				return "!";
+			int index = (int) value;
 
-			var name = value.ToString ();
+			if (index > 0 && index <= TagNames.Length)
+				return TagNames[index - 1];
 
-#if NETSTANDARD1_3 || NETSTANDARD1_6
-			var field = typeof (HtmlTagId).GetTypeInfo ().GetDeclaredField (name);
-			var attrs = field.GetCustomAttributes (typeof (HtmlTagNameAttribute), false).ToArray ();
-#else
-			var field = typeof (HtmlTagId).GetField (name);
-			var attrs = field.GetCustomAttributes (typeof (HtmlTagNameAttribute), false);
-#endif
-
-			if (attrs != null && attrs.Length == 1)
-				return ((HtmlTagNameAttribute) attrs[0]).Name;
-
-			return name.ToLowerInvariant ();
+			return value.ToString ();
 		}
 
 		/// <summary>
@@ -790,15 +900,13 @@ namespace MimeKit.Text {
 		/// <param name="name">The tag name.</param>
 		internal static HtmlTagId ToHtmlTagId (this string name)
 		{
-			HtmlTagId value;
-
 			if (string.IsNullOrEmpty (name))
 				return HtmlTagId.Unknown;
 
 			if (name[0] == '!')
 				return HtmlTagId.Comment;
 
-			if (!TagNameToId.TryGetValue (name, out value))
+			if (!IdMapping.TryGetValue (name, out HtmlTagId value))
 				return HtmlTagId.Unknown;
 
 			return value;

@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -46,7 +46,7 @@ namespace MimeKit {
 	/// </remarks>
 	public class ParserOptions
 	{
-		readonly Dictionary<string, ConstructorInfo> mimeTypes = new Dictionary<string, ConstructorInfo> (StringComparer.Ordinal);
+		readonly Dictionary<string, ConstructorInfo> mimeTypes = new Dictionary<string, ConstructorInfo> (MimeUtils.OrdinalIgnoreCase);
 		static readonly Type[] ConstructorArgTypes = { typeof (MimeEntityConstructorArgs) };
 
 		/// <summary>
@@ -59,7 +59,7 @@ namespace MimeKit {
 		public static readonly ParserOptions Default = new ParserOptions ();
 
 		/// <summary>
-		/// Gets or sets the compliance mode that should be used when parsing rfc822 addresses.
+		/// Get or set the compliance mode that should be used when parsing rfc822 addresses.
 		/// </summary>
 		/// <remarks>
 		/// <para>In general, you'll probably want this value to be <see cref="RfcComplianceMode.Loose"/>
@@ -73,7 +73,7 @@ namespace MimeKit {
 		public RfcComplianceMode AddressParserComplianceMode { get; set; }
 
 		/// <summary>
-		/// Gets or sets whether the rfc822 address parser should ignore unquoted commas in address names.
+		/// Get or set whether the rfc822 address parser should ignore unquoted commas in address names.
 		/// </summary>
 		/// <remarks>
 		/// <para>In general, you'll probably want this value to be <c>true</c> (the default) as it allows
@@ -85,7 +85,7 @@ namespace MimeKit {
 		public bool AllowUnquotedCommasInAddresses { get; set; }
 
 		/// <summary>
-		/// Gets or sets whether the rfc822 address parser should allow addresses without a domain.
+		/// Get or set whether the rfc822 address parser should allow addresses without a domain.
 		/// </summary>
 		/// <remarks>
 		/// <para>In general, you'll probably want this value to be <c>true</c> (the default) as it allows
@@ -98,7 +98,7 @@ namespace MimeKit {
 		public bool AllowAddressesWithoutDomain { get; set; }
 
 		/// <summary>
-		/// Gets or sets the maximum address group depth the parser should accept.
+		/// Get or set the maximum address group depth the parser should accept.
 		/// </summary>
 		/// <remarks>
 		/// <para>This option exists in order to define the maximum recursive depth of an rfc822 group address
@@ -110,19 +110,19 @@ namespace MimeKit {
 		public int MaxAddressGroupDepth { get; set; }
 
 		/// <summary>
-		/// Gets or sets the maximum MIME nesting depth the parser should accept.
+		/// Get or set the maximum MIME nesting depth the parser should accept.
 		/// </summary>
 		/// <remarks>
 		/// <para>This option exists in order to define the maximum recursive depth of MIME parts that the parser
 		/// should accept before treating further nesting as a leaf-node MIME part and not recursing any further.
-		/// If the value is set too large, then it is possible that a maliciously formed set of rdeeply nested
+		/// If the value is set too large, then it is possible that a maliciously formed set of deeply nested
 		/// multipart MIME parts could cause a stack overflow.</para>
 		/// </remarks>
 		/// <value>The maximum MIME nesting depth.</value>
 		public int MaxMimeDepth { get; set; }
 
 		/// <summary>
-		/// Gets or sets the compliance mode that should be used when parsing Content-Type and Content-Disposition parameters.
+		/// Get or set the compliance mode that should be used when parsing Content-Type and Content-Disposition parameters.
 		/// </summary>
 		/// <remarks>
 		/// <para>In general, you'll probably want this value to be <see cref="RfcComplianceMode.Loose"/>
@@ -136,7 +136,7 @@ namespace MimeKit {
 		public RfcComplianceMode ParameterComplianceMode { get; set; }
 
 		/// <summary>
-		/// Gets or sets the compliance mode that should be used when decoding rfc2047 encoded words.
+		/// Get or set the compliance mode that should be used when decoding rfc2047 encoded words.
 		/// </summary>
 		/// <remarks>
 		/// In general, you'll probably want this value to be <see cref="RfcComplianceMode.Loose"/>
@@ -147,7 +147,7 @@ namespace MimeKit {
 		public RfcComplianceMode Rfc2047ComplianceMode { get; set; }
 
 		/// <summary>
-		/// Gets or sets a value indicating whether the Content-Length value should be
+		/// Get or set a value indicating whether the Content-Length value should be
 		/// respected when parsing mbox streams.
 		/// </summary>
 		/// <remarks>
@@ -160,7 +160,7 @@ namespace MimeKit {
 		public bool RespectContentLength { get; set; }
 
 		/// <summary>
-		/// Gets or sets the charset encoding to use as a fallback for 8bit headers.
+		/// Get or set the charset encoding to use as a fallback for 8bit headers.
 		/// </summary>
 		/// <remarks>
 		/// <see cref="Rfc2047.DecodeText(ParserOptions, byte[])"/> and
@@ -194,7 +194,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Clones an instance of <see cref="ParserOptions"/>.
+		/// Clone an instance of <see cref="ParserOptions"/>.
 		/// </summary>
 		/// <remarks>
 		/// Clones a set of options, allowing you to change a specific option
@@ -203,16 +203,17 @@ namespace MimeKit {
 		/// <returns>An identical copy of the current instance.</returns>
 		public ParserOptions Clone ()
 		{
-			var options = new ParserOptions ();
-			options.AddressParserComplianceMode = AddressParserComplianceMode;
-			options.AllowUnquotedCommasInAddresses = AllowUnquotedCommasInAddresses;
-			options.AllowAddressesWithoutDomain = AllowAddressesWithoutDomain;
-			options.ParameterComplianceMode = ParameterComplianceMode;
-			options.Rfc2047ComplianceMode = Rfc2047ComplianceMode;
-			options.MaxAddressGroupDepth = MaxAddressGroupDepth;
-			options.RespectContentLength = RespectContentLength;
-			options.CharsetEncoding = CharsetEncoding;
-			options.MaxMimeDepth = MaxMimeDepth;
+			var options = new ParserOptions {
+				AddressParserComplianceMode = AddressParserComplianceMode,
+				AllowUnquotedCommasInAddresses = AllowUnquotedCommasInAddresses,
+				AllowAddressesWithoutDomain = AllowAddressesWithoutDomain,
+				ParameterComplianceMode = ParameterComplianceMode,
+				Rfc2047ComplianceMode = Rfc2047ComplianceMode,
+				MaxAddressGroupDepth = MaxAddressGroupDepth,
+				RespectContentLength = RespectContentLength,
+				CharsetEncoding = CharsetEncoding,
+				MaxMimeDepth = MaxMimeDepth
+			};
 
 			foreach (var mimeType in mimeTypes)
 				options.mimeTypes.Add (mimeType.Key, mimeType.Value);
@@ -221,7 +222,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Registers the <see cref="MimeEntity"/> subclass for the specified mime-type.
+		/// Register a <see cref="MimeEntity"/> subclass for the specified mime-type.
 		/// </summary>
 		/// <param name="mimeType">The MIME type.</param>
 		/// <param name="type">A custom subclass of <see cref="MimeEntity"/>.</param>
@@ -245,51 +246,58 @@ namespace MimeKit {
 		/// </exception>
 		public void RegisterMimeType (string mimeType, Type type)
 		{
-			if (mimeType == null)
+			if (mimeType is null)
 				throw new ArgumentNullException (nameof (mimeType));
 
-			if (type == null)
+			if (type is null)
 				throw new ArgumentNullException (nameof (type));
 
-			mimeType = mimeType.ToLowerInvariant ();
-
-#if NETSTANDARD1_3 || NETSTANDARD1_6
-			var info = type.GetTypeInfo ();
-#else
-			var info = type;
-#endif
-
-			if (!info.IsSubclassOf (typeof (MessagePart)) &&
-				!info.IsSubclassOf (typeof (Multipart)) &&
-				!info.IsSubclassOf (typeof (MimePart)))
+			if (!type.IsSubclassOf (typeof (MessagePart)) &&
+				!type.IsSubclassOf (typeof (Multipart)) &&
+				!type.IsSubclassOf (typeof (MimePart)))
 				throw new ArgumentException ("The specified type must be a subclass of MessagePart, Multipart, or MimePart.", nameof (type));
 
 			var ctor = type.GetConstructor (ConstructorArgTypes);
 
-			if (ctor == null)
+			if (ctor is null)
 				throw new ArgumentException ("The specified type must have a constructor that takes a MimeEntityConstructorArgs argument.", nameof (type));
+
+			mimeType = mimeType.ToLowerInvariant ();
 
 			mimeTypes[mimeType] = ctor;
 		}
 
+		internal static bool IsEncoded (ContentEncoding encoding)
+		{
+			switch (encoding) {
+			case ContentEncoding.SevenBit:
+			case ContentEncoding.EightBit:
+			case ContentEncoding.Binary:
+				return false;
+			default:
+				return true;
+			}
+		}
+
 		static bool IsEncoded (IList<Header> headers)
 		{
-			ContentEncoding encoding;
-
 			for (int i = 0; i < headers.Count; i++) {
 				if (headers[i].Id != HeaderId.ContentTransferEncoding)
 					continue;
 
-				MimeUtils.TryParse (headers[i].Value, out encoding);
+				MimeUtils.TryParse (headers[i].Value, out ContentEncoding encoding);
 
-				switch (encoding) {
-				case ContentEncoding.SevenBit:
-				case ContentEncoding.EightBit:
-				case ContentEncoding.Binary:
-					return false;
-				default:
+				return IsEncoded (encoding);
+			}
+
+			return false;
+		}
+
+		static bool EqualsAny (string value, params string[] values)
+		{
+			for (int i = 0; i < values.Length; i++) {
+				if (value.Equals (values[i], StringComparison.OrdinalIgnoreCase))
 					return true;
-				}
 			}
 
 			return false;
@@ -298,105 +306,119 @@ namespace MimeKit {
 		internal MimeEntity CreateEntity (ContentType contentType, IList<Header> headers, bool toplevel, int depth)
 		{
 			var args = new MimeEntityConstructorArgs (this, contentType, headers, toplevel);
-
-			if (depth >= MaxMimeDepth)
-				return new MimePart (args);
-
-			var subtype = contentType.MediaSubtype.ToLowerInvariant ();
-			var type = contentType.MediaType.ToLowerInvariant ();
+			var subtype = contentType.MediaSubtype;
+			var type = contentType.MediaType;
 
 			if (mimeTypes.Count > 0) {
-				var mimeType = string.Format ("{0}/{1}", type, subtype);
-				ConstructorInfo ctor;
+				var mimeType = $"{type}/{subtype}";
 
-				if (mimeTypes.TryGetValue (mimeType, out ctor))
-					return (MimeEntity) ctor.Invoke (new object[] { args });
-			}
-
-			// Note: message/rfc822 and message/partial are not allowed to be encoded according to rfc2046
-			// (sections 5.2.1 and 5.2.2, respectively). Since some broken clients will encode them anyway,
-			// it is necessary for us to treat those as opaque blobs instead, and thus the parser should
-			// parse them as normal MimeParts instead of MessageParts.
-			//
-			// Technically message/disposition-notification is only allowed to have use the 7bit encoding
-			// as well, but since MessageDispositionNotification is a MImePart subclass rather than a
-			// MessagePart subclass, it means that the content won't be parsed until later and so we can
-			// actually handle that w/o any problems.
-			if (type == "message") {
-				switch (subtype) {
-				case "global-disposition-notification":
-				case "disposition-notification":
-					return new MessageDispositionNotification (args);
-				case "global-delivery-status":
-				case "delivery-status":
-					return new MessageDeliveryStatus (args);
-				case "partial":
-					if (!IsEncoded (headers))
-						return new MessagePartial (args);
-					break;
-				case "global-headers":
-					if (!IsEncoded (headers))
-						return new TextRfc822Headers (args);
-					break;
-				case "external-body":
-				case "rfc2822":
-				case "rfc822":
-				case "global":
-				case "news":
-					if (!IsEncoded (headers))
-						return new MessagePart (args);
-					break;
+				if (mimeTypes.TryGetValue (mimeType, out var ctor)) {
+					// Instantiate the custom type if-and-only-if the current parser depth is < MaxMimeDepth -or- the custom type is a MimePart subclass.
+					if (depth < MaxMimeDepth || typeof (MimePart).IsAssignableFrom (ctor.DeclaringType))
+						return (MimeEntity) ctor.Invoke (new object[] { args });
 				}
 			}
 
-			if (type == "multipart") {
-				switch (subtype) {
-				case "alternative":
-					return new MultipartAlternative (args);
-				case "related":
-					return new MultipartRelated (args);
-				case "report":
-					return new MultipartReport (args);
-#if ENABLE_CRYPTO
-				case "encrypted":
-					return new MultipartEncrypted (args);
-				case "signed":
-					return new MultipartSigned (args);
-#endif
-				default:
-					return new Multipart (args);
-				}
-			}
-
-			if (type == "application") {
-				switch (subtype) {
-#if ENABLE_CRYPTO
-				case "x-pkcs7-signature":
-				case "pkcs7-signature":
-					return new ApplicationPkcs7Signature (args);
-				case "x-pgp-encrypted":
-				case "pgp-encrypted":
-					return new ApplicationPgpEncrypted (args);
-				case "x-pgp-signature":
-				case "pgp-signature":
-					return new ApplicationPgpSignature (args);
-				case "x-pkcs7-mime":
-				case "pkcs7-mime":
-					return new ApplicationPkcs7Mime (args);
-#endif
-				case "vnd.ms-tnef":
-				case "ms-tnef":
-					return new TnefPart (args);
-				case "rtf":
-					return new TextPart (args);
-				}
-			}
-
-			if (type == "text") {
-				if (subtype == "rfc822-headers" && !IsEncoded (headers))
+			if (type.Equals ("text", StringComparison.OrdinalIgnoreCase)) {
+				// text/rfc822-headers
+				if (depth < MaxMimeDepth && subtype.Equals ("rfc822-headers", StringComparison.OrdinalIgnoreCase) && !IsEncoded (headers))
 					return new TextRfc822Headers (args);
 
 				return new TextPart (args);
+			} else if (type.Equals ("multipart", StringComparison.OrdinalIgnoreCase)) {
+				if (depth >= MaxMimeDepth) {
+					// We don't want to recurse any further, so treat this as a leaf node.
+					return new MimePart (args);
+				}
+
+				// multipart/alternative
+				if (subtype.Equals ("alternative", StringComparison.OrdinalIgnoreCase))
+					return new MultipartAlternative (args);
+
+				// multipart/related
+				if (subtype.Equals ("related", StringComparison.OrdinalIgnoreCase))
+					return new MultipartRelated (args);
+
+				// multipart/report
+				if (subtype.Equals ("report", StringComparison.OrdinalIgnoreCase))
+					return new MultipartReport (args);
+
+#if ENABLE_CRYPTO
+				// multipart/encrypted
+				if (subtype.Equals ("encrypted", StringComparison.OrdinalIgnoreCase))
+					return new MultipartEncrypted (args);
+
+				// multipart/signed
+				if (subtype.Equals ("signed", StringComparison.OrdinalIgnoreCase))
+					return new MultipartSigned (args);
+#endif
+
+				// multipart/mixed, multipart/parallel, etc.
+				return new Multipart (args);
+			} else if (type.Equals ("message", StringComparison.OrdinalIgnoreCase)) {
+				// Note: message/rfc822 and message/partial are not allowed to be encoded according to rfc2046
+				// (sections 5.2.1 and 5.2.2, respectively). Since some broken clients will encode them anyway,
+				// it is necessary for us to treat those as opaque blobs instead, and thus the parser should
+				// parse them as normal MimeParts instead of MessageParts.
+				//
+				// Technically message/disposition-notification is only allowed to have use the 7bit encoding
+				// as well, but since MessageDispositionNotification is a MImePart subclass rather than a
+				// MessagePart subclass, it means that the content won't be parsed until later and so we can
+				// actually handle that w/o any problems.
+
+				// message/disposition-notification
+				if (EqualsAny (subtype, "disposition-notification", "global-disposition-notification"))
+					return new MessageDispositionNotification (args);
+
+				// message/delivery-status
+				if (EqualsAny (subtype, "delivery-status", "global-delivery-status"))
+					return new MessageDeliveryStatus (args);
+
+				if (subtype.Equals ("feedback-report", StringComparison.OrdinalIgnoreCase))
+					return new MessageFeedbackReport (args);
+
+				// message/rfc822
+				if (EqualsAny (subtype, "rfc822", "global", "news", "external-body", "rfc2822")) {
+					if (depth < MaxMimeDepth && !IsEncoded (headers))
+						return new MessagePart (args);
+				} else if (subtype.Equals ("partial", StringComparison.OrdinalIgnoreCase)) {
+					if (!IsEncoded (headers))
+						return new MessagePartial (args);
+				} else if (subtype.Equals ("global-headers", StringComparison.OrdinalIgnoreCase)) {
+					if (depth < MaxMimeDepth && !IsEncoded (headers))
+						return new TextRfc822Headers (args);
+				}
+			} else if (type.Equals ("application", StringComparison.OrdinalIgnoreCase)) {
+#if ENABLE_CRYPTO
+				// application/pkcs7-mime
+				if (subtype.Equals ("pkcs7-mime", StringComparison.OrdinalIgnoreCase) ||
+					subtype.Equals ("x-pkcs7-mime", StringComparison.OrdinalIgnoreCase))
+					return new ApplicationPkcs7Mime (args);
+
+				// application/pkcs7-signature
+				if (subtype.Equals ("pkcs7-signature", StringComparison.OrdinalIgnoreCase) ||
+					subtype.Equals ("x-pkcs7-signature", StringComparison.OrdinalIgnoreCase))
+					return new ApplicationPkcs7Signature (args);
+
+				// application/pgp-encrypted
+				if (subtype.Equals ("pgp-encrypted", StringComparison.OrdinalIgnoreCase) ||
+					subtype.Equals ("x-pgp-encrypted", StringComparison.OrdinalIgnoreCase))
+					return new ApplicationPgpEncrypted (args);
+
+				// application/pgp-signature
+				if (subtype.Equals ("pgp-signature", StringComparison.OrdinalIgnoreCase) ||
+					subtype.Equals ("x-pgp-signature", StringComparison.OrdinalIgnoreCase))
+					return new ApplicationPgpSignature (args);
+#endif
+
+				// application/ms-tnef
+				if (subtype.Equals ("ms-tnef", StringComparison.OrdinalIgnoreCase) ||
+					subtype.Equals ("vnd.ms-tnef", StringComparison.OrdinalIgnoreCase))
+					return new TnefPart (args);
+
+				// application/rtf
+				if (subtype.Equals ("rtf", StringComparison.OrdinalIgnoreCase))
+					return new TextPart (args);
 			}
 
 			return new MimePart (args);

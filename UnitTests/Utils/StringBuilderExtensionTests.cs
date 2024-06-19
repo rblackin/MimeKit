@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,11 +24,7 @@
 // THE SOFTWARE.
 //
 
-using System;
 using System.Text;
-using System.Collections.Generic;
-
-using NUnit.Framework;
 
 using MimeKit;
 using MimeKit.Utils;
@@ -49,13 +45,13 @@ namespace UnitTests.Utils {
 
 			builder.LineWrap (format);
 
-			Assert.AreEqual (expected1, builder.ToString (), "#1");
+			Assert.That (builder.ToString (), Is.EqualTo (expected1), "#1");
 
 			builder.Length -= 2;
 
 			builder.LineWrap (format);
 
-			Assert.AreEqual (expected2, builder.ToString (), "#2");
+			Assert.That (builder.ToString (), Is.EqualTo (expected2), "#2");
 		}
 
 		[Test]
@@ -75,7 +71,7 @@ namespace UnitTests.Utils {
 
 			builder.AppendTokens (format, ref lineLength, tokens);
 
-			Assert.AreEqual ("Authentication-Results: this-is-a-really-long-parameter-name=\n\tthis-is-a-really-long-parameter-value", builder.ToString ());
+			Assert.That (builder.ToString (), Is.EqualTo ("Authentication-Results: this-is-a-really-long-parameter-name=\n\tthis-is-a-really-long-parameter-value"));
 		}
 
 		[Test]
@@ -90,21 +86,24 @@ namespace UnitTests.Utils {
 
 			builder.AppendFolded (format, false, "to it: \"and this is a \\\"quoted string\\\" that must not get broken up!\" Got it? Good. There should be another wrap in here...", ref lineLength);
 
-			Assert.AreEqual (expected, builder.ToString ());
-			Assert.AreEqual (40, lineLength);
+			Assert.That (builder.ToString (), Is.EqualTo (expected));
+			Assert.That (lineLength, Is.EqualTo (40));
 		}
 
 #if DEBUG
 		[Test]
-		public void TestAppendCStringByte ()
+		public void TestAppendCString ()
 		{
 			const string expected = "\\0\\x01\\x02\\x03\\x04\\x05\\x06\\a\\b\\t\\n\\v\\x0c\\r\\x0e\\x0f\\x10\\x11\\x12\\x13\\x14\\x15\\x16\\x17\\x18\\x19\\x1a\\x1b\\x1c\\x1d\\x1e\\x1f ";
 			var builder = new StringBuilder ();
+			var cstr = new byte[0x21];
 
 			for (byte i = 0; i < 0x21; i++)
-				builder.AppendCStringByte (i);
+				cstr[i] = i;
 
-			Assert.AreEqual (expected, builder.ToString ());
+			builder.AppendCString (cstr, 0, cstr.Length);
+
+			Assert.That (builder.ToString (), Is.EqualTo (expected));
 		}
 #endif
 	}

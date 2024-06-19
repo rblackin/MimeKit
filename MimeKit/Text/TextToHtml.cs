@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -127,7 +127,7 @@ namespace MimeKit.Text {
 
 		class TextToHtmlTagContext : HtmlTagContext
 		{
-			HtmlAttributeCollection attributes;
+			readonly HtmlAttributeCollection attributes;
 			bool isEndTag;
 
 			public TextToHtmlTagContext (HtmlTagId tag, HtmlAttribute attr) : base (tag)
@@ -203,13 +203,12 @@ namespace MimeKit.Text {
 			var content = text.ToCharArray ();
 			int endIndex = content.Length;
 			int startIndex = 0;
-			UrlMatch match;
 			int count;
 
 			do {
 				count = endIndex - startIndex;
 
-				if (scanner.Scan (content, startIndex, count, out match)) {
+				if (scanner.Scan (content, startIndex, count, out var match)) {
 					count = match.EndIndex - match.StartIndex;
 
 					if (match.StartIndex > startIndex) {
@@ -258,10 +257,10 @@ namespace MimeKit.Text {
 		/// </exception>
 		public override void Convert (TextReader reader, TextWriter writer)
 		{
-			if (reader == null)
+			if (reader is null)
 				throw new ArgumentNullException (nameof (reader));
 
-			if (writer == null)
+			if (writer is null)
 				throw new ArgumentNullException (nameof (writer));
 
 			if (!OutputHtmlFragment)
@@ -281,12 +280,12 @@ namespace MimeKit.Text {
 			using (var htmlWriter = new HtmlWriter (writer)) {
 				var callback = HtmlTagCallback ?? DefaultHtmlTagCallback;
 				var stack = new List<TextToHtmlTagContext> ();
-				int currentQuoteDepth = 0, quoteDepth;
+				int currentQuoteDepth = 0;
 				TextToHtmlTagContext ctx;
 				string line;
 
 				while ((line = reader.ReadLine ()) != null) {
-					line = Unquote (line, out quoteDepth);
+					line = Unquote (line, out int quoteDepth);
 
 					while (currentQuoteDepth < quoteDepth) {
 						ctx = new TextToHtmlTagContext (HtmlTagId.BlockQuote);

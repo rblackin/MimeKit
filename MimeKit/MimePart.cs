@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -27,8 +27,8 @@
 using System;
 using System.IO;
 using System.Text;
-using System.Buffers;
 using System.Threading;
+using System.Globalization;
 using System.Threading.Tasks;
 
 using MD5 = System.Security.Cryptography.MD5;
@@ -48,12 +48,17 @@ namespace MimeKit {
 	/// <example>
 	/// <code language="c#" source="Examples\AttachmentExamples.cs" region="SaveAttachments" />
 	/// </example>
-	public class MimePart : MimeEntity
+	public class MimePart : MimeEntity, IMimePart
 	{
 		static readonly string[] ContentTransferEncodings = {
 			null, "7bit", "8bit", "binary", "base64", "quoted-printable", "x-uuencode"
 		};
+		const int DefaultMaxLineLength = 78;
+
+		int encoderMaxLineLength = DefaultMaxLineLength;
 		ContentEncoding encoding;
+		//string[] languages;
+		string description;
 		string md5sum;
 		int? duration;
 
@@ -97,13 +102,13 @@ namespace MimeKit {
 		/// </exception>
 		public MimePart (string mediaType, string mediaSubtype, params object[] args) : this (mediaType, mediaSubtype)
 		{
-			if (args == null)
+			if (args is null)
 				throw new ArgumentNullException (nameof (args));
 
 			IMimeContent content = null;
 
 			foreach (object obj in args) {
-				if (obj == null || TryInit (obj))
+				if (obj is null || TryInit (obj))
 					continue;
 
 				if (obj is IMimeContent co) {
@@ -192,8 +197,57 @@ namespace MimeKit {
 		{
 		}
 
+		void CheckDisposed ()
+		{
+			CheckDisposed (nameof (MimePart));
+		}
+
 		/// <summary>
-		/// Gets or sets the duration of the content if available.
+		/// Get or set the description of the content if available.
+		/// </summary>
+		/// <remarks>
+		/// <para>The Content-Description header can be used to set a description of the content.</para>
+		/// </remarks>
+		/// <value>The description of the content.</value>
+		/// <exception cref="System.ArgumentOutOfRangeException">
+		/// <paramref name="value"/> is negative.
+		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimePart"/> has been disposed.
+		/// </exception>
+		public string ContentDescription {
+			get {
+				CheckDisposed ();
+
+				if ((LazyLoaded & LazyLoadedFields.ContentDescription) == 0) {
+					if (Headers.TryGetHeader (HeaderId.ContentDescription, out var header))
+						description = header.Value.Trim ();
+
+					LazyLoaded |= LazyLoadedFields.ContentDescription;
+				}
+
+				return description;
+			}
+			set {
+				CheckDisposed ();
+
+				if ((LazyLoaded & LazyLoadedFields.ContentDescription) != 0 && description == value)
+					return;
+
+				description = value?.Trim ();
+
+				if (value != null) {
+					SetHeader ("Content-Description", description);
+				} else {
+					RemoveHeader ("Content-Description");
+				}
+
+				LazyLoaded |= LazyLoadedFields.ContentDescription;
+			}
+		}
+
+		/// <summary>
+		/// Get or set the duration of the content if available.
 		/// </summary>
 		/// <remarks>
 		/// <para>The Content-Duration header specifies duration of timed media,
@@ -203,10 +257,28 @@ namespace MimeKit {
 		/// <exception cref="System.ArgumentOutOfRangeException">
 		/// <paramref name="value"/> is negative.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimePart"/> has been disposed.
+		/// </exception>
 		public int? ContentDuration {
-			get { return duration; }
+			get {
+				CheckDisposed ();
+
+				if ((LazyLoaded & LazyLoadedFields.ContentDuration) == 0) {
+					if (Headers.TryGetHeader (HeaderId.ContentDuration, out var header)) {
+						if (int.TryParse (header.Value, NumberStyles.AllowLeadingWhite | NumberStyles.AllowTrailingWhite, CultureInfo.InvariantCulture, out var value))
+							duration = value;
+					}
+
+					LazyLoaded |= LazyLoadedFields.ContentDuration;
+				}
+
+				return duration;
+			}
 			set {
-				if (duration == value)
+				CheckDisposed ();
+
+				if ((LazyLoaded & LazyLoadedFields.ContentDuration) != 0 && duration == value)
 					return;
 
 				if (value.HasValue && value.Value < 0)
@@ -214,15 +286,18 @@ namespace MimeKit {
 
 				duration = value;
 
-				if (value.HasValue)
-					SetHeader ("Content-Duration", value.Value.ToString ());
-				else
+				if (value.HasValue) {
+					SetHeader ("Content-Duration", value.Value.ToString (CultureInfo.InvariantCulture));
+				} else {
 					RemoveHeader ("Content-Duration");
+				}
+
+				LazyLoaded |= LazyLoadedFields.ContentDuration;
 			}
 		}
 
 		/// <summary>
-		/// Gets or sets the md5sum of the content.
+		/// Get or set the md5sum of the content.
 		/// </summary>
 		/// <remarks>
 		/// <para>The Content-MD5 header specifies the base64-encoded MD5 checksum of the content
@@ -230,23 +305,42 @@ namespace MimeKit {
 		/// <para>For more information, see <a href="https://tools.ietf.org/html/rfc1864">rfc1864</a>.</para>
 		/// </remarks>
 		/// <value>The md5sum of the content.</value>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimePart"/> has been disposed.
+		/// </exception>
 		public string ContentMd5 {
-			get { return md5sum; }
+			get {
+				CheckDisposed ();
+
+				if ((LazyLoaded & LazyLoadedFields.ContentMd5) == 0) {
+					if (Headers.TryGetHeader (HeaderId.ContentMd5, out var header))
+						md5sum = header.Value.Trim ();
+
+					LazyLoaded |= LazyLoadedFields.ContentMd5;
+				}
+
+				return md5sum;
+			}
 			set {
-				if (md5sum == value)
+				CheckDisposed ();
+
+				if ((LazyLoaded & LazyLoadedFields.ContentMd5) != 0 && md5sum == value)
 					return;
 
-				md5sum = value != null ? value.Trim () : null;
+				md5sum = value?.Trim ();
 
-				if (value != null)
+				if (value != null) {
 					SetHeader ("Content-Md5", md5sum);
-				else
+				} else {
 					RemoveHeader ("Content-Md5");
+				}
+
+				LazyLoaded |= LazyLoadedFields.ContentMd5;
 			}
 		}
 
 		/// <summary>
-		/// Gets or sets the content transfer encoding.
+		/// Get or set the content transfer encoding.
 		/// </summary>
 		/// <remarks>
 		/// The Content-Transfer-Encoding header specifies an auxiliary encoding
@@ -261,10 +355,26 @@ namespace MimeKit {
 		/// <exception cref="System.ArgumentOutOfRangeException">
 		/// <paramref name="value"/> is not a valid content encoding.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimePart"/> has been disposed.
+		/// </exception>
 		public ContentEncoding ContentTransferEncoding {
-			get { return encoding; }
+			get {
+				CheckDisposed ();
+
+				if ((LazyLoaded & LazyLoadedFields.ContentTransferEncoding) == 0) {
+					if (Headers.TryGetHeader (HeaderId.ContentTransferEncoding, out var header))
+						MimeUtils.TryParse (header.Value, out encoding);
+
+					LazyLoaded |= LazyLoadedFields.ContentTransferEncoding;
+				}
+
+				return encoding;
+			}
 			set {
-				if (encoding == value)
+				CheckDisposed ();
+
+				if ((LazyLoaded & LazyLoadedFields.ContentTransferEncoding) != 0 && encoding == value)
 					return;
 
 				int index = (int) value;
@@ -276,15 +386,18 @@ namespace MimeKit {
 
 				encoding = value;
 
-				if (text != null)
+				if (text != null) {
 					SetHeader ("Content-Transfer-Encoding", text);
-				else
+				} else {
 					RemoveHeader ("Content-Transfer-Encoding");
+				}
+
+				LazyLoaded |= LazyLoadedFields.ContentTransferEncoding;
 			}
 		}
 
 		/// <summary>
-		/// Gets or sets the name of the file.
+		/// Get or set the name of the file.
 		/// </summary>
 		/// <remarks>
 		/// <para>First checks for the "filename" parameter on the Content-Disposition header. If
@@ -296,6 +409,9 @@ namespace MimeKit {
 		/// <code language="c#" source="Examples\AttachmentExamples.cs" region="SaveAttachments" />
 		/// </example>
 		/// <value>The name of the file.</value>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimePart"/> has been disposed.
+		/// </exception>
 		public string FileName {
 			get {
 				string filename = null;
@@ -303,15 +419,13 @@ namespace MimeKit {
 				if (ContentDisposition != null)
 					filename = ContentDisposition.FileName;
 
-				if (filename == null)
-					filename = ContentType.Name;
+				filename ??= ContentType.Name;
 
-				return filename != null ? filename.Trim () : null;
+				return filename?.Trim ();
 			}
 			set {
 				if (value != null) {
-					if (ContentDisposition == null)
-						ContentDisposition = new ContentDisposition (ContentDisposition.Attachment);
+					ContentDisposition ??= new ContentDisposition (ContentDisposition.Attachment);
 					ContentDisposition.FileName = value;
 				} else if (ContentDisposition != null) {
 					ContentDisposition.FileName = value;
@@ -322,7 +436,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets or sets the MIME content.
+		/// Get or set the MIME content.
 		/// </summary>
 		/// <remarks>
 		/// Gets or sets the MIME content.
@@ -333,19 +447,6 @@ namespace MimeKit {
 		/// <value>The MIME content.</value>
 		public IMimeContent Content {
 			get; set;
-		}
-
-		/// <summary>
-		/// Gets or sets the MIME content.
-		/// </summary>
-		/// <remarks>
-		/// Gets or sets the MIME content.
-		/// </remarks>
-		/// <value>The MIME content.</value>
-		[Obsolete ("Use the Content property instead.")]
-		public IMimeContent ContentObject {
-			get { return Content; }
-			set { Content = value; }
 		}
 
 		/// <summary>
@@ -363,16 +464,21 @@ namespace MimeKit {
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="visitor"/> is <c>null</c>.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimePart"/> has been disposed.
+		/// </exception>
 		public override void Accept (MimeVisitor visitor)
 		{
-			if (visitor == null)
+			if (visitor is null)
 				throw new ArgumentNullException (nameof (visitor));
+
+			CheckDisposed ();
 
 			visitor.VisitMimePart (this);
 		}
 
 		/// <summary>
-		/// Calculates the most efficient content encoding given the specified constraint.
+		/// Calculate the most efficient content encoding given the specified constraint.
 		/// </summary>
 		/// <remarks>
 		/// If no <see cref="Content"/> is set, <see cref="ContentEncoding.SevenBit"/> will be returned.
@@ -383,19 +489,22 @@ namespace MimeKit {
 		/// <exception cref="System.ArgumentOutOfRangeException">
 		/// <paramref name="constraint"/> is not a valid value.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimePart"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public ContentEncoding GetBestEncoding (EncodingConstraint constraint, CancellationToken cancellationToken = default (CancellationToken))
+		public ContentEncoding GetBestEncoding (EncodingConstraint constraint, CancellationToken cancellationToken = default)
 		{
-			return GetBestEncoding (constraint, 78, cancellationToken);
+			return GetBestEncoding (constraint, DefaultMaxLineLength, cancellationToken);
 		}
 
 		/// <summary>
-		/// Calculates the most efficient content encoding given the specified constraint.
+		/// Calculate the most efficient content encoding given the specified constraint.
 		/// </summary>
 		/// <remarks>
 		/// If no <see cref="Content"/> is set, <see cref="ContentEncoding.SevenBit"/> will be returned.
@@ -409,16 +518,21 @@ namespace MimeKit {
 		/// <para>-or-</para>
 		/// <para><paramref name="constraint"/> is not a valid value.</para>
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimePart"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public ContentEncoding GetBestEncoding (EncodingConstraint constraint, int maxLineLength, CancellationToken cancellationToken = default (CancellationToken))
+		public ContentEncoding GetBestEncoding (EncodingConstraint constraint, int maxLineLength, CancellationToken cancellationToken = default)
 		{
-			if (ContentType.IsMimeType ("text", "*")) {
-				if (Content == null)
+			CheckDisposed ();
+
+			if (ContentType.IsMimeType ("text", "*") || ContentType.IsMimeType ("message", "*")) {
+				if (Content is null)
 					return ContentEncoding.SevenBit;
 
 				using (var measure = new MeasuringStream ()) {
@@ -427,7 +541,7 @@ namespace MimeKit {
 
 						filtered.Add (filter);
 						Content.DecodeTo (filtered, cancellationToken);
-						filtered.Flush ();
+						filtered.Flush (cancellationToken);
 
 						return filter.GetBestEncoding (constraint, maxLineLength);
 					}
@@ -438,19 +552,24 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Computes the MD5 checksum of the content.
+		/// Compute the MD5 checksum of the content.
 		/// </summary>
 		/// <remarks>
 		/// Computes the MD5 checksum of the MIME content in its canonical
 		/// format and then base64-encodes the result.
 		/// </remarks>
 		/// <returns>The md5sum of the content.</returns>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimePart"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.InvalidOperationException">
 		/// The <see cref="Content"/> is <c>null</c>.
 		/// </exception>
 		public string ComputeContentMd5 ()
 		{
-			if (Content == null)
+			CheckDisposed ();
+
+			if (Content is null)
 				throw new InvalidOperationException ("Cannot compute Md5 checksum without a ContentObject.");
 
 			using (var stream = Content.Open ()) {
@@ -465,33 +584,15 @@ namespace MimeKit {
 				}
 
 				var base64 = new Base64Encoder (true);
-				var digest = ArrayPool<byte>.Shared.Rent (base64.EstimateOutputLength (checksum.Length));
+				var digest = new byte[base64.EstimateOutputLength (checksum.Length)];
+				int n = base64.Flush (checksum, 0, checksum.Length, digest);
 
-				try {
-					int n = base64.Flush (checksum, 0, checksum.Length, digest);
-
-					return Encoding.ASCII.GetString (digest, 0, n);
-				} finally {
-					ArrayPool<byte>.Shared.Return (digest);
-				}
+				return Encoding.ASCII.GetString (digest, 0, n);
 			}
-		}
-
-		static bool IsNullOrWhiteSpace (string value)
-		{
-			if (string.IsNullOrEmpty (value))
-				return true;
-
-			for (int i = 0; i < value.Length; i++) {
-				if (!char.IsWhiteSpace (value[i]))
-					return false;
-			}
-
-			return true;
 		}
 
 		/// <summary>
-		/// Verifies the Content-Md5 value against an independently computed md5sum.
+		/// Verify the Content-Md5 value against an independently computed md5sum.
 		/// </summary>
 		/// <remarks>
 		/// Computes the MD5 checksum of the MIME content and compares it with the
@@ -499,9 +600,14 @@ namespace MimeKit {
 		/// the values match.
 		/// </remarks>
 		/// <returns><c>true</c>, if content MD5 checksum was verified, <c>false</c> otherwise.</returns>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimePart"/> has been disposed.
+		/// </exception>
 		public bool VerifyContentMd5 ()
 		{
-			if (IsNullOrWhiteSpace (md5sum) || Content == null)
+			CheckDisposed ();
+
+			if (string.IsNullOrWhiteSpace (md5sum) || Content is null)
 				return false;
 
 			return md5sum == ComputeContentMd5 ();
@@ -520,10 +626,15 @@ namespace MimeKit {
 		/// <para>-or-</para>
 		/// <para><paramref name="constraint"/> is not a valid value.</para>
 		/// </exception>
-		public override void Prepare (EncodingConstraint constraint, int maxLineLength = 78)
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimePart"/> has been disposed.
+		/// </exception>
+		public override void Prepare (EncodingConstraint constraint, int maxLineLength = DefaultMaxLineLength)
 		{
 			if (maxLineLength < FormatOptions.MinimumLineLength || maxLineLength > FormatOptions.MaximumLineLength)
 				throw new ArgumentOutOfRangeException (nameof (maxLineLength));
+
+			CheckDisposed ();
 
 			switch (ContentTransferEncoding) {
 			case ContentEncoding.QuotedPrintable:
@@ -544,6 +655,7 @@ namespace MimeKit {
 			if (ContentTransferEncoding == ContentEncoding.Default && best == ContentEncoding.SevenBit)
 				return;
 
+			encoderMaxLineLength = maxLineLength;
 			ContentTransferEncoding = best;
 		}
 
@@ -562,23 +674,26 @@ namespace MimeKit {
 		/// <para>-or-</para>
 		/// <para><paramref name="stream"/> is <c>null</c>.</para>
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimePart"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public override void WriteTo (FormatOptions options, Stream stream, bool contentOnly, CancellationToken cancellationToken = default (CancellationToken))
+		public override void WriteTo (FormatOptions options, Stream stream, bool contentOnly, CancellationToken cancellationToken = default)
 		{
 			base.WriteTo (options, stream, contentOnly, cancellationToken);
 
-			if (Content == null)
+			if (Content is null)
 				return;
 
-			var cancellable = stream as ICancellableStream;
+			if (Content.Encoding != ContentTransferEncoding) {
+				var cancellable = stream as ICancellableStream;
 
-			if (Content.Encoding != encoding) {
-				if (encoding == ContentEncoding.UUEncode) {
+				if (ContentTransferEncoding == ContentEncoding.UUEncode) {
 					var begin = string.Format ("begin 0644 {0}", FileName ?? "unknown");
 					var buffer = Encoding.UTF8.GetBytes (begin);
 
@@ -594,17 +709,17 @@ namespace MimeKit {
 
 				// transcode the content into the desired Content-Transfer-Encoding
 				using (var filtered = new FilteredStream (stream)) {
-					filtered.Add (EncoderFilter.Create (encoding));
+					filtered.Add (EncoderFilter.Create (ContentTransferEncoding, encoderMaxLineLength));
 
-					if (encoding != ContentEncoding.Binary)
+					if (ContentTransferEncoding != ContentEncoding.Binary)
 						filtered.Add (options.CreateNewLineFilter (EnsureNewLine));
 
 					Content.DecodeTo (filtered, cancellationToken);
 					filtered.Flush (cancellationToken);
 				}
 
-				if (encoding == ContentEncoding.UUEncode) {
-					var buffer = Encoding.ASCII.GetBytes ("end");
+				if (ContentTransferEncoding == ContentEncoding.UUEncode) {
+					var buffer = "end"u8.ToArray ();
 
 					if (cancellable != null) {
 						cancellable.Write (buffer, 0, buffer.Length, cancellationToken);
@@ -615,7 +730,7 @@ namespace MimeKit {
 						stream.Write (options.NewLineBytes, 0, options.NewLineBytes.Length);
 					}
 				}
-			} else if (encoding == ContentEncoding.Binary) {
+			} else if (ContentTransferEncoding == ContentEncoding.Binary) {
 				// Do not alter binary content.
 				Content.WriteTo (stream, cancellationToken);
 			} else if (options.VerifyingSignature && Content.NewLineFormat.HasValue && Content.NewLineFormat.Value == NewLineFormat.Mixed) {
@@ -651,23 +766,24 @@ namespace MimeKit {
 		/// <para>-or-</para>
 		/// <para><paramref name="stream"/> is <c>null</c>.</para>
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimePart"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public override async Task WriteToAsync (FormatOptions options, Stream stream, bool contentOnly, CancellationToken cancellationToken = default (CancellationToken))
+		public override async Task WriteToAsync (FormatOptions options, Stream stream, bool contentOnly, CancellationToken cancellationToken = default)
 		{
 			await base.WriteToAsync (options, stream, contentOnly, cancellationToken).ConfigureAwait (false);
 
-			if (Content == null)
+			if (Content is null)
 				return;
 
-			var isText = ContentType.IsMimeType ("text", "*") || ContentType.IsMimeType ("message", "*");
-
-			if (Content.Encoding != encoding) {
-				if (encoding == ContentEncoding.UUEncode) {
+			if (Content.Encoding != ContentTransferEncoding) {
+				if (ContentTransferEncoding == ContentEncoding.UUEncode) {
 					var begin = string.Format ("begin 0644 {0}", FileName ?? "unknown");
 					var buffer = Encoding.UTF8.GetBytes (begin);
 
@@ -677,22 +793,22 @@ namespace MimeKit {
 
 				// transcode the content into the desired Content-Transfer-Encoding
 				using (var filtered = new FilteredStream (stream)) {
-					filtered.Add (EncoderFilter.Create (encoding));
+					filtered.Add (EncoderFilter.Create (ContentTransferEncoding, encoderMaxLineLength));
 
-					if (encoding != ContentEncoding.Binary)
+					if (ContentTransferEncoding != ContentEncoding.Binary)
 						filtered.Add (options.CreateNewLineFilter (EnsureNewLine));
 
 					await Content.DecodeToAsync (filtered, cancellationToken).ConfigureAwait (false);
 					await filtered.FlushAsync (cancellationToken).ConfigureAwait (false);
 				}
 
-				if (encoding == ContentEncoding.UUEncode) {
-					var buffer = Encoding.ASCII.GetBytes ("end");
+				if (ContentTransferEncoding == ContentEncoding.UUEncode) {
+					var buffer = "end"u8.ToArray();
 
 					await stream.WriteAsync (buffer, 0, buffer.Length, cancellationToken).ConfigureAwait (false);
 					await stream.WriteAsync (options.NewLineBytes, 0, options.NewLineBytes.Length, cancellationToken).ConfigureAwait (false);
 				}
-			} else if (encoding == ContentEncoding.Binary) {
+			} else if (ContentTransferEncoding == ContentEncoding.Binary) {
 				// Do not alter binary content.
 				await Content.WriteToAsync (stream, cancellationToken).ConfigureAwait (false);
 			} else if (options.VerifyingSignature && Content.NewLineFormat.HasValue && Content.NewLineFormat.Value == NewLineFormat.Mixed) {
@@ -723,49 +839,57 @@ namespace MimeKit {
 		/// <param name="header">The header being added, changed or removed.</param>
 		protected override void OnHeadersChanged (HeaderListChangedAction action, Header header)
 		{
-			int value;
-
 			base.OnHeadersChanged (action, header);
 
 			switch (action) {
 			case HeaderListChangedAction.Added:
 			case HeaderListChangedAction.Changed:
-				switch (header.Id) {
-				case HeaderId.ContentTransferEncoding:
-					MimeUtils.TryParse (header.Value, out encoding);
-					break;
-				case HeaderId.ContentDuration:
-					if (int.TryParse (header.Value, out value))
-						duration = value;
-					else
-						duration = null;
-					break;
-				case HeaderId.ContentMd5:
-					md5sum = header.Value.Trim ();
-					break;
-				}
-				break;
 			case HeaderListChangedAction.Removed:
 				switch (header.Id) {
 				case HeaderId.ContentTransferEncoding:
+					LazyLoaded &= ~LazyLoadedFields.ContentTransferEncoding;
 					encoding = ContentEncoding.Default;
 					break;
+				case HeaderId.ContentDescription:
+					LazyLoaded &= ~LazyLoadedFields.ContentDescription;
+					description = null;
+					break;
 				case HeaderId.ContentDuration:
+					LazyLoaded &= ~LazyLoadedFields.ContentDuration;
 					duration = null;
 					break;
 				case HeaderId.ContentMd5:
+					LazyLoaded &= ~LazyLoadedFields.ContentMd5;
 					md5sum = null;
 					break;
 				}
 				break;
 			case HeaderListChangedAction.Cleared:
+				LazyLoaded = LazyLoadedFields.None;
 				encoding = ContentEncoding.Default;
+				description = null;
 				duration = null;
 				md5sum = null;
 				break;
-			default:
-				throw new ArgumentOutOfRangeException (nameof (action));
 			}
+		}
+
+		/// <summary>
+		/// Releases the unmanaged resources used by the <see cref="MimePart"/> and
+		/// optionally releases the managed resources.
+		/// </summary>
+		/// <remarks>
+		/// Releases the unmanaged resources used by the <see cref="MimePart"/> and
+		/// optionally releases the managed resources.
+		/// </remarks>
+		/// <param name="disposing"><c>true</c> to release both managed and unmanaged resources;
+		/// <c>false</c> to release only the unmanaged resources.</param>
+		protected override void Dispose (bool disposing)
+		{
+			if (disposing && Content != null)
+				Content.Dispose ();
+
+			base.Dispose (disposing);
 		}
 	}
 }

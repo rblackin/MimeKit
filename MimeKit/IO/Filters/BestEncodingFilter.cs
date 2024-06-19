@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -25,6 +25,7 @@
 //
 
 using System;
+using System.Buffers.Binary;
 
 namespace MimeKit.IO.Filters {
 	/// <summary>
@@ -55,7 +56,7 @@ namespace MimeKit.IO.Filters {
 		}
 
 		/// <summary>
-		/// Gets the best encoding given the specified constraints.
+		/// Get the best encoding given the specified constraints.
 		/// </summary>
 		/// <remarks>
 		/// Gets the best encoding given the specified constraints.
@@ -102,7 +103,7 @@ namespace MimeKit.IO.Filters {
 				break;
 			case EncodingConstraint.None:
 				if (hasMarker || maxline > maxLineLength) {
-					if (count8 > (int) (total * (17.0 / 100.0)))
+					if (count0 > 0 || count8 > (int) (total * (17.0 / 100.0)))
 						return ContentEncoding.Base64;
 
 					return ContentEncoding.QuotedPrintable;
@@ -124,19 +125,16 @@ namespace MimeKit.IO.Filters {
 
 		#region IMimeFilter implementation
 
-		static unsafe bool IsMboxMarker (byte[] marker)
+		static bool IsMboxMarker (byte[] marker)
 		{
-			const uint FromMask = 0xFFFFFFFF;
-			const uint From     = 0x6D6F7246;
+			const uint From = 0x6D6F7246;
 
-			fixed (byte* buf = marker) {
-				uint* word = (uint*) buf;
+			uint word = BinaryPrimitives.ReadUInt32LittleEndian (marker.AsSpan ());
 
-				if ((*word & FromMask) != From)
-					return false;
+			if (word != From)
+				return false;
 
-				return *(buf + 4) == (byte) ' ';
-			}
+			return marker[4] == (byte) ' ';
 		}
 
 		unsafe void Scan (byte* inptr, byte* inend)
@@ -175,7 +173,7 @@ namespace MimeKit.IO.Filters {
 
 		static void ValidateArguments (byte[] input, int startIndex, int length)
 		{
-			if (input == null)
+			if (input is null)
 				throw new ArgumentNullException (nameof (input));
 
 			if (startIndex < 0 || startIndex > input.Length)
@@ -186,7 +184,7 @@ namespace MimeKit.IO.Filters {
 		}
 
 		/// <summary>
-		/// Filters the specified input.
+		/// Filter the specified input.
 		/// </summary>
 		/// <remarks>
 		/// Filters the specified input buffer starting at the given index,
@@ -225,7 +223,7 @@ namespace MimeKit.IO.Filters {
 		}
 
 		/// <summary>
-		/// Filters the specified input, flushing all internally buffered data to the output.
+		/// Filter the specified input, flushing all internally buffered data to the output.
 		/// </summary>
 		/// <remarks>
 		/// Filters the specified input buffer starting at the given index,
@@ -250,7 +248,7 @@ namespace MimeKit.IO.Filters {
 		}
 
 		/// <summary>
-		/// Resets the filter.
+		/// Reset the filter.
 		/// </summary>
 		/// <remarks>
 		/// Resets the filter.

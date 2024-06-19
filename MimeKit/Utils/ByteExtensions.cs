@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -45,6 +45,7 @@ namespace MimeKit.Utils {
 		IsWhitespace          = (1 << 12),
 		IsXDigit              = (1 << 13),
 		IsPhraseAtom          = (1 << 14),
+		IsFieldText           = (1 << 15),
 
 		IsAsciiAtom           = IsAscii | IsAtom,
 	}
@@ -114,6 +115,8 @@ namespace MimeKit.Utils {
 						table[i] |= CharType.IsEncodedPhraseSafe | CharType.IsAtom | CharType.IsPhraseAtom;
 					if ((i >= '0' && i <= '9') || (i >= 'a' && i <= 'f') || (i >= 'A' && i <= 'F'))
 						table[i] |= CharType.IsXDigit;
+					if ((i >= 33 && i <= 57) || i >= 59)
+						table[i] |= CharType.IsFieldText;
 
 					table[i] |= CharType.IsAscii;
 				} else {
@@ -182,6 +185,11 @@ namespace MimeKit.Utils {
 		public static bool IsDomain (this byte c)
 		{
 			return (table[c] & CharType.IsDomainSafe) != 0;
+		}
+
+		public static bool IsFieldText (this byte c)
+		{
+			return (table[c] & CharType.IsFieldText) != 0;
 		}
 
 		public static bool IsQpSafe (this byte c)

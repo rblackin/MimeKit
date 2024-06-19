@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -28,6 +28,7 @@ using System;
 using System.IO;
 using System.Text;
 using System.Globalization;
+using System.Buffers.Binary;
 
 namespace MimeKit.Tnef {
 	/// <summary>
@@ -58,7 +59,7 @@ namespace MimeKit.Tnef {
 		bool eos;
 
 		/// <summary>
-		/// Gets the attachment key value.
+		/// Get the attachment key value.
 		/// </summary>
 		/// <remarks>
 		/// Gets the attachment key value.
@@ -69,7 +70,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the current attribute's level.
+		/// Get the current attribute's level.
 		/// </summary>
 		/// <remarks>
 		/// Gets the current attribute's level.
@@ -80,7 +81,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the length of the current attribute's raw value.
+		/// Get the length of the current attribute's raw value.
 		/// </summary>
 		/// <remarks>
 		/// Gets the length of the current attribute's raw value.
@@ -91,7 +92,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the stream offset of the current attribute's raw value.
+		/// Get the stream offset of the current attribute's raw value.
 		/// </summary>
 		/// <remarks>
 		/// Gets the stream offset of the current attribute's raw value.
@@ -102,7 +103,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the current attribute's tag.
+		/// Get the current attribute's tag.
 		/// </summary>
 		/// <remarks>
 		/// Gets the current attribute's tag.
@@ -117,7 +118,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the compliance mode.
+		/// Get the compliance mode.
 		/// </summary>
 		/// <remarks>
 		/// Gets the compliance mode.
@@ -128,7 +129,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the current compliance status of the TNEF stream.
+		/// Get the current compliance status of the TNEF stream.
 		/// </summary>
 		/// <remarks>
 		/// <para>Gets the current compliance status of the TNEF stream.</para>
@@ -144,7 +145,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the message codepage.
+		/// Get the message codepage.
 		/// </summary>
 		/// <remarks>
 		/// Gets the message codepage.
@@ -169,7 +170,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the TNEF property reader.
+		/// Get the TNEF property reader.
 		/// </summary>
 		/// <remarks>
 		/// Gets the TNEF property reader.
@@ -180,7 +181,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the current stream offset.
+		/// Get the current stream offset.
 		/// </summary>
 		/// <remarks>
 		/// Gets the current stream offset.
@@ -191,7 +192,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the TNEF version.
+		/// Get the TNEF version.
 		/// </summary>
 		/// <remarks>
 		/// Gets the TNEF version.
@@ -238,7 +239,7 @@ namespace MimeKit.Tnef {
 		/// </exception>
 		public TnefReader (Stream inputStream, int defaultMessageCodepage, TnefComplianceMode complianceMode)
 		{
-			if (inputStream == null)
+			if (inputStream is null)
 				throw new ArgumentNullException (nameof (inputStream));
 
 			if (defaultMessageCodepage < 0)
@@ -465,7 +466,11 @@ namespace MimeKit.Tnef {
 
 			UpdateChecksum (input, inputIndex, 2);
 
-			return (short) (input[inputIndex++] | (input[inputIndex++] << 8));
+			var result = BinaryPrimitives.ReadInt16LittleEndian (input.AsSpan (inputIndex));
+
+			inputIndex += 2;
+
+			return result;
 		}
 
 		internal int ReadInt32 ()
@@ -475,8 +480,11 @@ namespace MimeKit.Tnef {
 
 			UpdateChecksum (input, inputIndex, 4);
 
-			return input[inputIndex++] | (input[inputIndex++] << 8) |
-				(input[inputIndex++] << 16) | (input[inputIndex++] << 24);
+			var result = BinaryPrimitives.ReadInt32LittleEndian (input.AsSpan(inputIndex));
+
+			inputIndex += 4;
+
+			return result;
 		}
 
 		internal int PeekInt32 ()
@@ -484,8 +492,7 @@ namespace MimeKit.Tnef {
 			if (ReadAhead (4) < 4)
 				throw new EndOfStreamException ();
 
-			return input[inputIndex] | (input[inputIndex + 1] << 8) |
-				(input[inputIndex + 2] << 16) | (input[inputIndex + 3] << 24);
+			return BinaryPrimitives.ReadInt32LittleEndian (input.AsSpan (inputIndex));
 		}
 
 		internal long ReadInt64 ()
@@ -495,34 +502,39 @@ namespace MimeKit.Tnef {
 
 			UpdateChecksum (input, inputIndex, 8);
 
-			return (long) input[inputIndex++] | ((long) input[inputIndex++] << 8) |
-				((long) input[inputIndex++] << 16) | ((long) input[inputIndex++] << 24) |
-				((long) input[inputIndex++] << 32) | ((long) input[inputIndex++] << 40) |
-				((long) input[inputIndex++] << 48) | ((long) input[inputIndex++] << 56);
-		}
+			var result = BinaryPrimitives.ReadInt64LittleEndian (input.AsSpan (inputIndex));
 
-		static unsafe float Int32BitsToSingle (int value)
-		{
-			return *((float*) &value);
+			inputIndex += 8;
+
+			return result;
 		}
 
 		internal float ReadSingle ()
 		{
-			var value = ReadInt32 ();
+			if (ReadAhead (4) < 4)
+				throw new EndOfStreamException ();
 
-			return Int32BitsToSingle (value);
-		}
+			UpdateChecksum (input, inputIndex, 4);
 
-		static unsafe double Int64BitsToDouble (long value)
-		{
-			return *((double*) &value);
+			var result = BitConverter.ToSingle (input, inputIndex);
+
+			inputIndex += 4;
+
+			return result;
 		}
 
 		internal double ReadDouble ()
 		{
-			var value = ReadInt64 ();
+			if (ReadAhead (8) < 8)
+				throw new EndOfStreamException ();
 
-			return Int64BitsToDouble (value);
+			UpdateChecksum (input, inputIndex, 8);
+
+			var result = BitConverter.ToDouble (input, inputIndex);
+
+			inputIndex += 8;
+
+			return result;
 		}
 
 		internal bool Seek (int offset)
@@ -578,7 +590,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Advances to the next attribute in the TNEF stream.
+		/// Advance to the next attribute in the TNEF stream.
 		/// </summary>
 		/// <remarks>
 		/// Advances to the next attribute in the TNEF stream.
@@ -636,7 +648,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Reads the raw attribute value data from the underlying TNEF stream.
+		/// Read the raw attribute value data from the underlying TNEF stream.
 		/// </summary>
 		/// <remarks>
 		/// Reads the raw attribute value data from the underlying TNEF stream.
@@ -664,7 +676,7 @@ namespace MimeKit.Tnef {
 		/// </exception>
 		public int ReadAttributeRawValue (byte[] buffer, int offset, int count)
 		{
-			if (buffer == null)
+			if (buffer is null)
 				throw new ArgumentNullException (nameof (buffer));
 
 			if (offset < 0 || offset >= buffer.Length)
@@ -701,7 +713,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Resets the compliance status.
+		/// Reset the compliance status.
 		/// </summary>
 		/// <remarks>
 		/// Resets the compliance status.
@@ -712,7 +724,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Closes the TNEF reader and the underlying stream.
+		/// Close the TNEF reader and the underlying stream.
 		/// </summary>
 		/// <remarks>
 		/// Closes the TNEF reader and the underlying stream.
@@ -725,7 +737,7 @@ namespace MimeKit.Tnef {
 		#region IDisposable implementation
 
 		/// <summary>
-		/// Releases the unmanaged resources used by the <see cref="TnefReader"/> and
+		/// Release the unmanaged resources used by the <see cref="TnefReader"/> and
 		/// optionally releases the managed resources.
 		/// </summary>
 		/// <remarks>
@@ -741,7 +753,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Releases all resource used by the <see cref="TnefReader"/> object.
+		/// Release all resource used by the <see cref="TnefReader"/> object.
 		/// </summary>
 		/// <remarks>Call <see cref="Dispose()"/> when you are finished using the <see cref="TnefReader"/>. The
 		/// <see cref="Dispose()"/> method leaves the <see cref="TnefReader"/> in an unusable state. After calling

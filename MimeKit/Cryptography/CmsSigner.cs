@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -34,6 +34,10 @@ using Org.BouncyCastle.X509;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Asn1.Cms;
 
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+
+using X509Certificate = Org.BouncyCastle.X509.X509Certificate;
 using X509Certificate2 = System.Security.Cryptography.X509Certificates.X509Certificate2;
 
 namespace MimeKit.Cryptography {
@@ -58,8 +62,9 @@ namespace MimeKit.Cryptography {
 		/// </remarks>
 		CmsSigner ()
 		{
-			UnsignedAttributes = new AttributeTable (new Dictionary<DerObjectIdentifier, Asn1Encodable> ());
-			SignedAttributes = new AttributeTable (new Dictionary<DerObjectIdentifier, Asn1Encodable> ());
+			UnsignedAttributes = new AttributeTable (new Dictionary<DerObjectIdentifier, object> ());
+			SignedAttributes = new AttributeTable (new Dictionary<DerObjectIdentifier, object> ());
+			//RsaSignaturePadding = RsaSignaturePadding.Pkcs1;
 			DigestAlgorithm = DigestAlgorithm.Sha256;
 		}
 
@@ -170,15 +175,17 @@ namespace MimeKit.Cryptography {
 			else
 				SignerIdentifierType = SubjectIdentifierType.SubjectKeyIdentifier;
 
-			CertificateChain = new X509CertificateChain ();
-			CertificateChain.Add (certificate);
+			CertificateChain = new X509CertificateChain {
+				certificate
+			};
 			Certificate = certificate;
 			PrivateKey = key;
 		}
 
 		void LoadPkcs12 (Stream stream, string password, SubjectIdentifierType signerIdentifierType)
 		{
-			var pkcs12 = new Pkcs12Store (stream, password.ToCharArray ());
+			var pkcs12 = new Pkcs12StoreBuilder ().Build ();
+			pkcs12.Load (stream, password.ToCharArray ());
 			bool hasPrivateKey = false;
 
 			foreach (string alias in pkcs12.Aliases) {
@@ -306,7 +313,6 @@ namespace MimeKit.Cryptography {
 				LoadPkcs12 (stream, password, signerIdentifierType);
 		}
 
-#if !NETSTANDARD1_3 && !NETSTANDARD1_6
 		/// <summary>
 		/// Initialize a new instance of the <see cref="CmsSigner"/> class.
 		/// </summary>
@@ -333,7 +339,11 @@ namespace MimeKit.Cryptography {
 				throw new ArgumentException ("The certificate does not contain a private key.", nameof (certificate));
 
 			var cert = certificate.AsBouncyCastleCertificate ();
-			var key = certificate.PrivateKey.AsAsymmetricKeyParameter ();
+
+			if (cert == null)
+				throw new ArgumentException ("Unable to convert certificate into the BouncyCastle format.", nameof (certificate));
+
+			var key = certificate.GetPrivateKeyAsAsymmetricKeyParameter ();
 
 			CheckCertificateCanBeUsedForSigning (cert);
 
@@ -343,11 +353,15 @@ namespace MimeKit.Cryptography {
 				SignerIdentifierType = SubjectIdentifierType.SubjectKeyIdentifier;
 
 			CertificateChain = new X509CertificateChain ();
+			WindowsCertificate = certificate;
 			CertificateChain.Add (cert);
 			Certificate = cert;
 			PrivateKey = key;
 		}
-#endif
+
+		internal X509Certificate2 WindowsCertificate {
+			get; set;
+		}
 
 		/// <summary>
 		/// Get the signer's certificate.
@@ -393,26 +407,6 @@ namespace MimeKit.Cryptography {
 		/// <value>The private key.</value>
 		public AsymmetricKeyParameter PrivateKey {
 			get; private set;
-		}
-
-		/// <summary>
-		/// Get or set the RSA signature padding scheme.
-		/// </summary>
-		/// <remarks>
-		/// <para>Gets or sets the signature padding scheme to use for signing when
-		/// the <see cref="PrivateKey"/> is an RSA key.</para>
-		/// </remarks>
-		/// <value>The signature padding scheme.</value>
-		[Obsolete ("Use RsaSignaturePadding instead.")]
-		public RsaSignaturePaddingScheme RsaSignaturePaddingScheme {
-			get { return RsaSignaturePadding?.Scheme ?? RsaSignaturePaddingScheme.Pkcs1; }
-			set {
-				switch (value) {
-				case RsaSignaturePaddingScheme.Pkcs1: RsaSignaturePadding = RsaSignaturePadding.Pkcs1; break;
-				case RsaSignaturePaddingScheme.Pss: RsaSignaturePadding = RsaSignaturePadding.Pss; break;
-				default: throw new ArgumentOutOfRangeException (nameof (value));
-				}
-			}
 		}
 
 		/// <summary>

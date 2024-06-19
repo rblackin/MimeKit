@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -61,7 +61,7 @@ namespace MimeKit.Cryptography {
 		{
 		}
 
-		static void ValidateDkimSignatureParameters (IDictionary<string, string> parameters, out DkimSignatureAlgorithm algorithm, out DkimCanonicalizationAlgorithm headerAlgorithm,
+		static void ValidateDkimSignatureParameters (Dictionary<string, string> parameters, out DkimSignatureAlgorithm algorithm, out DkimCanonicalizationAlgorithm headerAlgorithm,
 			out DkimCanonicalizationAlgorithm bodyAlgorithm, out string d, out string s, out string q, out string[] headers, out string bh, out string b, out int maxLength)
 		{
 			bool containsFrom = false;
@@ -85,15 +85,14 @@ namespace MimeKit.Cryptography {
 				throw new FormatException ("Malformed DKIM-Signature header: From header not signed.");
 
 			if (parameters.TryGetValue ("i", out string id)) {
-				string ident;
 				int at;
 
 				if ((at = id.LastIndexOf ('@')) == -1)
 					throw new FormatException ("Malformed DKIM-Signature header: no @ in the AUID value.");
 
-				ident = id.Substring (at + 1);
+				var ident = id.AsSpan (at + 1);
 
-				if (!ident.Equals (d, StringComparison.OrdinalIgnoreCase) && !ident.EndsWith ("." + d, StringComparison.OrdinalIgnoreCase))
+				if (!ident.Equals (d.AsSpan (), StringComparison.OrdinalIgnoreCase) && !ident.EndsWith (("." + d).AsSpan (), StringComparison.OrdinalIgnoreCase))
 					throw new FormatException ("Invalid DKIM-Signature header: the domain in the AUID does not match the domain parameter.");
 			}
 		}
@@ -174,7 +173,7 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
-		public bool Verify (FormatOptions options, MimeMessage message, Header dkimSignature, CancellationToken cancellationToken = default (CancellationToken))
+		public bool Verify (FormatOptions options, MimeMessage message, Header dkimSignature, CancellationToken cancellationToken = default)
 		{
 			return VerifyAsync (options, message, dkimSignature, false, cancellationToken).GetAwaiter ().GetResult ();
 		}
@@ -209,7 +208,7 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
-		public Task<bool> VerifyAsync (FormatOptions options, MimeMessage message, Header dkimSignature, CancellationToken cancellationToken = default (CancellationToken))
+		public Task<bool> VerifyAsync (FormatOptions options, MimeMessage message, Header dkimSignature, CancellationToken cancellationToken = default)
 		{
 			return VerifyAsync (options, message, dkimSignature, true, cancellationToken);
 		}
@@ -241,7 +240,7 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
-		public bool Verify (MimeMessage message, Header dkimSignature, CancellationToken cancellationToken = default (CancellationToken))
+		public bool Verify (MimeMessage message, Header dkimSignature, CancellationToken cancellationToken = default)
 		{
 			return Verify (FormatOptions.Default, message, dkimSignature, cancellationToken);
 		}
@@ -273,7 +272,7 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
-		public Task<bool> VerifyAsync (MimeMessage message, Header dkimSignature, CancellationToken cancellationToken = default (CancellationToken))
+		public Task<bool> VerifyAsync (MimeMessage message, Header dkimSignature, CancellationToken cancellationToken = default)
 		{
 			return VerifyAsync (FormatOptions.Default, message, dkimSignature, cancellationToken);
 		}

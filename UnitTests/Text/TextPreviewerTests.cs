@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,14 +24,10 @@
 // THE SOFTWARE.
 //
 
-using System;
-using System.IO;
 using System.Text;
 
 using MimeKit;
 using MimeKit.Text;
-
-using NUnit.Framework;
 
 namespace UnitTests.Text {
 	[TestFixture]
@@ -50,13 +46,13 @@ namespace UnitTests.Text {
 			return new TextPart (format) { Text = text };
 		}
 
-		void AssertPreviewText (string path, TextFormat format, string expected)
+		static void AssertPreviewText (string path, TextFormat format, string expected)
 		{
 			var body = CreateTextPart (path, format);
 			string actual;
 
 			actual = TextPreviewer.GetPreviewText (body);
-			Assert.AreEqual (expected, actual);
+			Assert.That (actual, Is.EqualTo (expected));
 		}
 
 		[Test]
@@ -114,7 +110,7 @@ namespace UnitTests.Text {
 				body.ContentType.Charset = "x-unknown";
 
 				preview = TextPreviewer.GetPreviewText (body);
-				Assert.AreEqual ("¤é¤ë¬P¨°", preview, "chinese text x-unknown -> UTF-8 -> iso-8859-1");
+				Assert.That (preview, Is.EqualTo ("¤é¤ë¬P¨°"), "chinese text x-unknown -> UTF-8 -> iso-8859-1");
 			}
 
 			using (var memory = new MemoryStream ()) {
@@ -130,7 +126,7 @@ namespace UnitTests.Text {
 				body.ContentType.Charset = "x-unknown";
 
 				preview = TextPreviewer.GetPreviewText (body);
-				Assert.AreEqual ("日月星辰", preview, "x-unknown -> UTF-8");
+				Assert.That (preview, Is.EqualTo ("日月星辰"), "x-unknown -> UTF-8");
 			}
 
 			using (var memory = new MemoryStream ()) {
@@ -146,7 +142,7 @@ namespace UnitTests.Text {
 				body.ContentType.Charset = "x-unknown";
 
 				preview = TextPreviewer.GetPreviewText (body);
-				Assert.AreEqual ("L'encyclopédie libre", preview, "french text x-unknown -> UTF-8 -> iso-8859-1");
+				Assert.That (preview, Is.EqualTo ("L'encyclopédie libre"), "french text x-unknown -> UTF-8 -> iso-8859-1");
 			}
 		}
 	}

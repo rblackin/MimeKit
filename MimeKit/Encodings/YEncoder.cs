@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -64,7 +64,7 @@ namespace MimeKit.Encodings {
 		}
 
 		/// <summary>
-		/// Gets the checksum.
+		/// Get the checksum.
 		/// </summary>
 		/// <remarks>
 		/// Gets the checksum.
@@ -83,16 +83,14 @@ namespace MimeKit.Encodings {
 		/// <returns>A new <see cref="YEncoder"/> with identical state.</returns>
 		public IMimeEncoder Clone ()
 		{
-			var encoder = new YEncoder (lineLength);
-
-			encoder.crc = crc.Clone ();
-			encoder.octets = octets;
-
-			return encoder;
+			return new YEncoder (lineLength) {
+				crc = crc.Clone (),
+				octets = octets
+			};
 		}
 
 		/// <summary>
-		/// Gets the encoding.
+		/// Get the encoding.
 		/// </summary>
 		/// <remarks>
 		/// Gets the encoding that the encoder supports.
@@ -103,7 +101,7 @@ namespace MimeKit.Encodings {
 		}
 
 		/// <summary>
-		/// Estimates the length of the output.
+		/// Estimate the length of the output.
 		/// </summary>
 		/// <remarks>
 		/// Estimates the number of bytes needed to encode the specified number of input bytes.
@@ -117,7 +115,7 @@ namespace MimeKit.Encodings {
 
 		void ValidateArguments (byte[] input, int startIndex, int length, byte[] output)
 		{
-			if (input == null)
+			if (input is null)
 				throw new ArgumentNullException (nameof (input));
 
 			if (startIndex < 0 || startIndex > input.Length)
@@ -126,7 +124,7 @@ namespace MimeKit.Encodings {
 			if (length < 0 || length > (input.Length - startIndex))
 				throw new ArgumentOutOfRangeException (nameof (length));
 
-			if (output == null)
+			if (output is null)
 				throw new ArgumentNullException (nameof (output));
 
 			if (output.Length < EstimateOutputLength (length))
@@ -165,7 +163,7 @@ namespace MimeKit.Encodings {
 		}
 
 		/// <summary>
-		/// Encodes the specified input into the output buffer.
+		/// Encode the specified input into the output buffer.
 		/// </summary>
 		/// <remarks>
 		/// <para>Encodes the specified input into the output buffer.</para>
@@ -219,10 +217,10 @@ namespace MimeKit.Encodings {
 		}
 
 		/// <summary>
-		/// Encodes the specified input into the output buffer, flushing any internal buffer state as well.
+		/// Encode the specified input into the output buffer, flushing any internal buffer state as well.
 		/// </summary>
 		/// <remarks>
-		/// <para>Encodes the specified input into the output buffer, flusing any internal state as well.</para>
+		/// <para>Encodes the specified input into the output buffer, flushing any internal state as well.</para>
 		/// <para>The output buffer should be large enough to hold all of the
 		/// encoded input. For estimating the size needed for the output buffer,
 		/// see <see cref="EstimateOutputLength"/>.</para>
@@ -258,7 +256,7 @@ namespace MimeKit.Encodings {
 		}
 
 		/// <summary>
-		/// Resets the encoder.
+		/// Reset the encoder.
 		/// </summary>
 		/// <remarks>
 		/// Resets the state of the encoder.

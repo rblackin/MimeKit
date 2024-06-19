@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -26,8 +26,6 @@
 
 using System;
 using System.IO;
-using System.Text;
-using System.Buffers;
 using System.Collections.Generic;
 
 using Org.BouncyCastle.Asn1;
@@ -36,6 +34,8 @@ using Org.BouncyCastle.Asn1.X509;
 using Org.BouncyCastle.Asn1.Smime;
 using Org.BouncyCastle.Crypto.Digests;
 using Org.BouncyCastle.Crypto.Parameters;
+
+using MimeKit.Utils;
 
 using X509Certificate2 = System.Security.Cryptography.X509Certificates.X509Certificate2;
 
@@ -89,12 +89,11 @@ namespace MimeKit.Cryptography {
 			if (certificate == null)
 				throw new ArgumentNullException (nameof (certificate));
 
-			// FIXME: GetValueList() should be fixed to return IList<string>
 			var list = certificate.IssuerDN.GetValueList (identifier);
 			if (list.Count == 0)
 				return string.Empty;
 
-			return (string) list[0];
+			return list[0];
 		}
 
 		/// <summary>
@@ -114,12 +113,11 @@ namespace MimeKit.Cryptography {
 			if (certificate == null)
 				throw new ArgumentNullException (nameof (certificate));
 
-			// FIXME: GetValueList() should be fixed to return IList<string>
 			var list = certificate.SubjectDN.GetValueList (identifier);
 			if (list.Count == 0)
 				return string.Empty;
 
-			return (string) list[0];
+			return list[0];
 		}
 
 		/// <summary>
@@ -191,19 +189,14 @@ namespace MimeKit.Cryptography {
 			return null;
 		}
 
-		static string AsHex (this byte[] blob, int length)
-		{
-			var hex = new StringBuilder (length * 2);
-
-			for (int i = 0; i < length; i++)
-				hex.Append (blob[i].ToString ("x2"));
-
-			return hex.ToString ();
-		}
-
 		internal static string AsHex (this byte[] blob)
 		{
-			return AsHex (blob, blob.Length);
+			var hex = new ValueStringBuilder (blob.Length * 2);
+
+			for (int i = 0; i < blob.Length; i++)
+				hex.AppendInvariant (blob[i], "x2");
+
+			return hex.ToString ();
 		}
 
 		/// <summary>
@@ -228,15 +221,10 @@ namespace MimeKit.Cryptography {
 
 			sha1.BlockUpdate (encoded, 0, encoded.Length);
 
-			var fingerprint = ArrayPool<byte>.Shared.Rent (20);
+			var fingerprint = new byte[20];
+			sha1.DoFinal (fingerprint, 0);
 
-			try {
-				sha1.DoFinal (fingerprint, 0);
-
-				return fingerprint.AsHex (20);
-			} finally {
-				ArrayPool<byte>.Shared.Return (fingerprint);
-			}
+			return fingerprint.AsHex ();
 		}
 
 		/// <summary>
@@ -322,16 +310,14 @@ namespace MimeKit.Cryptography {
 			using (var memory = new MemoryStream (rawData, false)) {
 				using (var asn1 = new Asn1InputStream (memory)) {
 					var algorithms = new List<EncryptionAlgorithm> ();
-					var sequence = asn1.ReadObject () as Asn1Sequence;
 
-					if (sequence == null)
+					if (asn1.ReadObject () is not Asn1Sequence sequence)
 						return null;
 
 					for (int i = 0; i < sequence.Count; i++) {
 						var identifier = AlgorithmIdentifier.GetInstance (sequence[i]);
-						EncryptionAlgorithm algorithm;
 
-						if (BouncyCastleSecureMimeContext.TryGetEncryptionAlgorithm (identifier, out algorithm))
+						if (BouncyCastleSecureMimeContext.TryGetEncryptionAlgorithm (identifier, out var algorithm))
 							algorithms.Add (algorithm);
 					}
 
@@ -371,7 +357,7 @@ namespace MimeKit.Cryptography {
 		{
 			var critical = crl.GetCriticalExtensionOids ();
 
-			return critical != null ? critical.Contains (X509Extensions.DeltaCrlIndicator.Id) : false;
+			return critical != null && critical.Contains (X509Extensions.DeltaCrlIndicator.Id);
 		}
 	}
 }

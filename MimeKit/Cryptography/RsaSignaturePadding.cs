@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -39,11 +39,17 @@ namespace MimeKit.Cryptography {
 		/// <summary>
 		/// The PKCS #1 v1.5 signature padding.
 		/// </summary>
+		/// <remarks>
+		/// The PKCS #1 v1.5 signature padding.
+		/// </remarks>
 		public static readonly RsaSignaturePadding Pkcs1 = new RsaSignaturePadding (RsaSignaturePaddingScheme.Pkcs1);
 
 		/// <summary>
 		/// The Probibilistic Signature Scheme (PSS) padding.
 		/// </summary>
+		/// <remarks>
+		/// The Probibilistic Signature Scheme (PSS) padding.
+		/// </remarks>
 		public static readonly RsaSignaturePadding Pss = new RsaSignaturePadding (RsaSignaturePaddingScheme.Pss);
 
 		RsaSignaturePadding (RsaSignaturePaddingScheme scheme)
@@ -73,7 +79,7 @@ namespace MimeKit.Cryptography {
 		/// <see cref="RsaSignaturePadding"/>; otherwise, <c>false</c>.</returns>
 		public bool Equals (RsaSignaturePadding other)
 		{
-			if (other == null)
+			if (other is null)
 				return false;
 
 			return other.Scheme == Scheme;
@@ -130,8 +136,8 @@ namespace MimeKit.Cryptography {
 		/// <returns><c>true</c> if <paramref name="left"/> and <paramref name="right"/> are equal; otherwise, <c>false</c>.</returns>
 		public static bool operator == (RsaSignaturePadding left, RsaSignaturePadding right)
 		{
-			if (ReferenceEquals (left, null))
-				return ReferenceEquals (right, null);
+			if (left is null)
+				return right is null;
 
 			return left.Equals (right);
 		}

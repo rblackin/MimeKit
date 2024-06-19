@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,11 +24,7 @@
 // THE SOFTWARE.
 //
 
-using System;
-using System.IO;
 using System.Text;
-
-using NUnit.Framework;
 
 using MimeKit;
 
@@ -76,7 +72,7 @@ namespace UnitTests {
 			Assert.Throws<ArgumentNullException> (() => list.Contains ((string) null));
 
 			// CopyTo
-			Assert.Throws<ArgumentOutOfRangeException> (() => list.CopyTo (new Header[0], -1));
+			Assert.Throws<ArgumentOutOfRangeException> (() => list.CopyTo (Array.Empty<Header> (), -1));
 			Assert.Throws<ArgumentNullException> (() => list.CopyTo (null, 0));
 
 			// IndexOf
@@ -170,37 +166,37 @@ namespace UnitTests {
 		[Test]
 		public void TestRemovingHeaders ()
 		{
-			var headers = new HeaderList ();
+			var headers = new HeaderList {
+				{ "From", "sender@localhost" },
+				{ "To", "first@localhost" },
+				{ "To", "second@localhost" },
+				{ "To", "third@localhost" },
+				{ "To", "fourth@localhost" },
+				{ "Cc", "carbon.copy@localhost" }
+			};
 
-			headers.Add ("From", "sender@localhost");
-			headers.Add ("To", "first@localhost");
-			headers.Add ("To", "second@localhost");
-			headers.Add ("To", "third@localhost");
-			headers.Add ("To", "fourth@localhost");
-			headers.Add ("Cc", "carbon.copy@localhost");
+			Assert.That (headers.IsReadOnly, Is.False);
+			Assert.That (headers.Contains (new Header (HeaderId.Received, "value")), Is.False);
+			Assert.That (headers.IndexOf (new Header (HeaderId.Received, "value")), Is.EqualTo (-1));
+			Assert.That (headers.IndexOf ("Received"), Is.EqualTo (-1));
+			Assert.That (headers.LastIndexOf (HeaderId.Received), Is.EqualTo (-1));
+			Assert.That (headers[HeaderId.Received], Is.EqualTo (null));
 
-			Assert.IsFalse (headers.IsReadOnly);
-			Assert.IsFalse (headers.Contains (new Header (HeaderId.Received, "value")));
-			Assert.AreEqual (-1, headers.IndexOf (new Header (HeaderId.Received, "value")));
-			Assert.AreEqual (-1, headers.IndexOf ("Received"));
-			Assert.AreEqual (-1, headers.LastIndexOf (HeaderId.Received));
-			Assert.AreEqual (null, headers[HeaderId.Received]);
-
-			Assert.IsTrue (headers.Remove ("Cc"));
+			Assert.That (headers.Remove ("Cc"), Is.True);
 
 			// try removing a header that no longer exists
-			Assert.IsFalse (headers.Remove (new Header (HeaderId.Cc, "value")));
-			Assert.IsFalse (headers.Remove (HeaderId.Cc));
-			Assert.IsFalse (headers.Remove ("Cc"));
+			Assert.That (headers.Remove (new Header (HeaderId.Cc, "value")), Is.False);
+			Assert.That (headers.Remove (HeaderId.Cc), Is.False);
+			Assert.That (headers.Remove ("Cc"), Is.False);
 
 			// removing this will change the result of headers[HeaderId.To]
-			Assert.AreEqual ("first@localhost", headers[HeaderId.To]);
-			Assert.IsTrue (headers.Remove (HeaderId.To));
-			Assert.AreEqual ("second@localhost", headers[HeaderId.To]);
-			Assert.IsTrue (headers.Remove ("To"));
-			Assert.AreEqual ("third@localhost", headers[HeaderId.To]);
+			Assert.That (headers[HeaderId.To], Is.EqualTo ("first@localhost"));
+			Assert.That (headers.Remove (HeaderId.To), Is.True);
+			Assert.That (headers[HeaderId.To], Is.EqualTo ("second@localhost"));
+			Assert.That (headers.Remove ("To"), Is.True);
+			Assert.That (headers[HeaderId.To], Is.EqualTo ("third@localhost"));
 			headers.RemoveAt (headers.IndexOf ("To"));
-			Assert.AreEqual ("fourth@localhost", headers[HeaderId.To]);
+			Assert.That (headers[HeaderId.To], Is.EqualTo ("fourth@localhost"));
 		}
 
 		[Test]
@@ -210,39 +206,40 @@ namespace UnitTests {
 			const string ReplacedContentDisposition = "inline; filename=body.txt";
 			const string ReplacedContentLocation = "http://www.example.com/location";
 			const string ReplacedContentId = "<content.id.2@localhost>";
-			var headers = new HeaderList ();
+			var headers = new HeaderList {
+				{ HeaderId.ContentId, "<content-id.1@localhost>" },
+				{ "Content-Location", "http://www.location.com" }
+			};
 
-			headers.Add (HeaderId.ContentId, "<content-id.1@localhost>");
-			headers.Add ("Content-Location", "http://www.location.com");
 			headers.Insert (0, HeaderId.ContentDisposition, "attachment");
 			headers.Insert (0, "Content-Type", "text/plain");
 
-			Assert.IsTrue (headers.Contains (HeaderId.ContentType), "Expected the list of headers to contain HeaderId.ContentType.");
-			Assert.IsTrue (headers.Contains ("Content-Type"), "Expected the list of headers to contain a Content-Type header.");
-			Assert.AreEqual (0, headers.LastIndexOf (HeaderId.ContentType), "Expected the Content-Type header to be the first header.");
+			Assert.That (headers.Contains (HeaderId.ContentType), Is.True, "Expected the list of headers to contain HeaderId.ContentType.");
+			Assert.That (headers.Contains ("Content-Type"), Is.True, "Expected the list of headers to contain a Content-Type header.");
+			Assert.That (headers.LastIndexOf (HeaderId.ContentType), Is.EqualTo (0), "Expected the Content-Type header to be the first header.");
 
 			headers.Replace ("Content-Disposition", ReplacedContentDisposition);
-			Assert.AreEqual (4, headers.Count, "Unexpected number of headers after replacing Content-Disposition.");
-			Assert.AreEqual (ReplacedContentDisposition, headers["Content-Disposition"], "Content-Disposition has unexpected value after replacing it.");
-			Assert.AreEqual (1, headers.IndexOf ("Content-Disposition"), "Replaced Content-Disposition not in the expected position.");
+			Assert.That (headers.Count, Is.EqualTo (4), "Unexpected number of headers after replacing Content-Disposition.");
+			Assert.That (headers["Content-Disposition"], Is.EqualTo (ReplacedContentDisposition), "Content-Disposition has unexpected value after replacing it.");
+			Assert.That (headers.IndexOf ("Content-Disposition"), Is.EqualTo (1), "Replaced Content-Disposition not in the expected position.");
 
 			headers.Replace (HeaderId.ContentType, ReplacedContentType);
-			Assert.AreEqual (4, headers.Count, "Unexpected number of headers after replacing Content-Type.");
-			Assert.AreEqual (ReplacedContentType, headers["Content-Type"], "Content-Type has unexpected value after replacing it.");
-			Assert.AreEqual (0, headers.IndexOf ("Content-Type"), "Replaced Content-Type not in the expected position.");
+			Assert.That (headers.Count, Is.EqualTo (4), "Unexpected number of headers after replacing Content-Type.");
+			Assert.That (headers["Content-Type"], Is.EqualTo (ReplacedContentType), "Content-Type has unexpected value after replacing it.");
+			Assert.That (headers.IndexOf ("Content-Type"), Is.EqualTo (0), "Replaced Content-Type not in the expected position.");
 
 			headers.Replace (HeaderId.ContentId, Encoding.UTF8, ReplacedContentId);
-			Assert.AreEqual (4, headers.Count, "Unexpected number of headers after replacing Content-Id.");
-			Assert.AreEqual (ReplacedContentId, headers["Content-Id"], "Content-Id has unexpected value after replacing it.");
-			Assert.AreEqual (2, headers.IndexOf ("Content-Id"), "Replaced Content-Id not in the expected position.");
+			Assert.That (headers.Count, Is.EqualTo (4), "Unexpected number of headers after replacing Content-Id.");
+			Assert.That (headers["Content-Id"], Is.EqualTo (ReplacedContentId), "Content-Id has unexpected value after replacing it.");
+			Assert.That (headers.IndexOf ("Content-Id"), Is.EqualTo (2), "Replaced Content-Id not in the expected position.");
 
 			headers.Replace ("Content-Location", Encoding.UTF8, ReplacedContentLocation);
-			Assert.AreEqual (4, headers.Count, "Unexpected number of headers after replacing Content-Location.");
-			Assert.AreEqual (ReplacedContentLocation, headers["Content-Location"], "Content-Location has unexpected value after replacing it.");
-			Assert.AreEqual (3, headers.IndexOf ("Content-Location"), "Replaced Content-Location not in the expected position.");
+			Assert.That (headers.Count, Is.EqualTo (4), "Unexpected number of headers after replacing Content-Location.");
+			Assert.That (headers["Content-Location"], Is.EqualTo (ReplacedContentLocation), "Content-Location has unexpected value after replacing it.");
+			Assert.That (headers.IndexOf ("Content-Location"), Is.EqualTo (3), "Replaced Content-Location not in the expected position.");
 
 			headers.RemoveAll ("Content-Location");
-			Assert.AreEqual (3, headers.Count, "Unexpected number of headers after removing Content-Location.");
+			Assert.That (headers.Count, Is.EqualTo (3), "Unexpected number of headers after removing Content-Location.");
 
 			headers.Clear ();
 
@@ -252,29 +249,29 @@ namespace UnitTests {
 			headers.Add (HeaderId.ReturnPath, "return-path");
 
 			headers[0] = new Header (HeaderId.ReturnPath, "new return-path");
-			Assert.AreEqual ("new return-path", headers[HeaderId.ReturnPath]);
+			Assert.That (headers[HeaderId.ReturnPath], Is.EqualTo ("new return-path"));
 			headers[0] = new Header (HeaderId.Received, "new received");
-			Assert.AreEqual ("new received", headers[HeaderId.Received]);
+			Assert.That (headers[HeaderId.Received], Is.EqualTo ("new received"));
 		}
 
 		[Test]
 		public void TestReplacingMultipleHeaders ()
 		{
 			const string CombinedRecpients = "first@localhost, second@localhost, third@localhost";
-			var headers = new HeaderList ();
-
-			headers.Add ("From", "sender@localhost");
-			headers.Add ("To", "first@localhost");
-			headers.Add ("To", "second@localhost");
-			headers.Add ("To", "third@localhost");
-			headers.Add ("Cc", "carbon.copy@localhost");
+			var headers = new HeaderList {
+				{ "From", "sender@localhost" },
+				{ "To", "first@localhost" },
+				{ "To", "second@localhost" },
+				{ "To", "third@localhost" },
+				{ "Cc", "carbon.copy@localhost" }
+			};
 
 			headers.Replace ("To", CombinedRecpients);
-			Assert.AreEqual (3, headers.Count, "Unexpected number of headers after replacing To header.");
-			Assert.AreEqual (CombinedRecpients, headers["To"], "To header has unexpected value after being replaced.");
-			Assert.AreEqual (1, headers.IndexOf ("To"), "Replaced To header not in the expected position.");
-			Assert.AreEqual (0, headers.IndexOf ("From"), "From header not in the expected position.");
-			Assert.AreEqual (2, headers.IndexOf ("Cc"), "Cc header not in the expected position.");
+			Assert.That (headers.Count, Is.EqualTo (3), "Unexpected number of headers after replacing To header.");
+			Assert.That (headers["To"], Is.EqualTo (CombinedRecpients), "To header has unexpected value after being replaced.");
+			Assert.That (headers.IndexOf ("To"), Is.EqualTo (1), "Replaced To header not in the expected position.");
+			Assert.That (headers.IndexOf ("From"), Is.EqualTo (0), "From header not in the expected position.");
+			Assert.That (headers.IndexOf ("Cc"), Is.EqualTo (2), "Cc header not in the expected position.");
 		}
 	}
 }

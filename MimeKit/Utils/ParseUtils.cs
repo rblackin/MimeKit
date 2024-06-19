@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -31,14 +31,12 @@ using System.Globalization;
 namespace MimeKit.Utils {
 	static class ParseUtils
 	{
-		static readonly IdnMapping idn = new IdnMapping ();
-
 		public static void ValidateArguments (ParserOptions options, byte[] buffer, int startIndex, int length)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (buffer == null)
+			if (buffer is null)
 				throw new ArgumentNullException (nameof (buffer));
 
 			if (startIndex < 0 || startIndex > buffer.Length)
@@ -50,10 +48,10 @@ namespace MimeKit.Utils {
 
 		public static void ValidateArguments (ParserOptions options, byte[] buffer, int startIndex)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (buffer == null)
+			if (buffer is null)
 				throw new ArgumentNullException (nameof (buffer));
 
 			if (startIndex < 0 || startIndex > buffer.Length)
@@ -62,25 +60,25 @@ namespace MimeKit.Utils {
 
 		public static void ValidateArguments (ParserOptions options, byte[] buffer)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (buffer == null)
+			if (buffer is null)
 				throw new ArgumentNullException (nameof (buffer));
 		}
 
 		public static void ValidateArguments (ParserOptions options, string text)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (text == null)
+			if (text is null)
 				throw new ArgumentNullException (nameof (text));
 		}
 
 		public static void ValidateArguments (byte[] buffer, int startIndex, int length)
 		{
-			if (buffer == null)
+			if (buffer is null)
 				throw new ArgumentNullException (nameof (buffer));
 
 			if (startIndex < 0 || startIndex > buffer.Length)
@@ -140,6 +138,32 @@ namespace MimeKit.Utils {
 					if (text[index] == (byte) '(')
 						depth++;
 					else if (text[index] == (byte) ')')
+						depth--;
+					escaped = false;
+				} else {
+					escaped = false;
+				}
+
+				index++;
+			}
+
+			return depth == 0;
+		}
+
+		public static bool SkipComment (string text, ref int index, int endIndex)
+		{
+			bool escaped = false;
+			int depth = 1;
+
+			index++;
+
+			while (index < endIndex && depth > 0) {
+				if (text[index] == '\\') {
+					escaped = !escaped;
+				} else if (!escaped) {
+					if (text[index] == '(')
+						depth++;
+					else if (text[index] == ')')
 						depth--;
 					escaped = false;
 				} else {
@@ -248,7 +272,7 @@ namespace MimeKit.Utils {
 			return false;
 		}
 
-		public static bool IsSentinel (byte c, byte[] sentinels)
+		public static bool IsSentinel (byte c, ReadOnlySpan<byte> sentinels)
 		{
 			for (int i = 0; i < sentinels.Length; i++) {
 				if (c == sentinels[i])
@@ -258,9 +282,9 @@ namespace MimeKit.Utils {
 			return false;
 		}
 
-		static bool TryParseDotAtom (byte[] text, ref int index, int endIndex, byte[] sentinels, bool throwOnError, string tokenType, out string dotatom)
+		static bool TryParseDotAtom (byte[] text, ref int index, int endIndex, ReadOnlySpan<byte> sentinels, bool throwOnError, string tokenType, out string dotatom)
 		{
-			var token = new StringBuilder ();
+			using var token = new ValueStringBuilder (128);
 			int startIndex = index;
 			int comment;
 
@@ -316,7 +340,8 @@ namespace MimeKit.Utils {
 
 		static bool TryParseDomainLiteral (byte[] text, ref int index, int endIndex, bool throwOnError, out string domain)
 		{
-			var token = new StringBuilder ("[");
+			using var token = new ValueStringBuilder (128);
+			token.Append('[');
 			int startIndex = index++;
 
 			domain = null;
@@ -357,7 +382,7 @@ namespace MimeKit.Utils {
 			return true;
 		}
 
-		public static bool TryParseDomain (byte[] text, ref int index, int endIndex, byte[] sentinels, bool throwOnError, out string domain)
+		public static bool TryParseDomain (byte[] text, ref int index, int endIndex, ReadOnlySpan<byte> sentinels, bool throwOnError, out string domain)
 		{
 			if (text[index] == (byte) '[')
 				return TryParseDomainLiteral (text, ref index, endIndex, throwOnError, out domain);
@@ -365,11 +390,12 @@ namespace MimeKit.Utils {
 			return TryParseDotAtom (text, ref index, endIndex, sentinels, throwOnError, "domain", out domain);
 		}
 
-		static readonly byte[] GreaterThanOrAt = { (byte) '>', (byte) '@' };
+		static ReadOnlySpan<byte> GreaterThanOrAt => ">@"u8;
 
 		public static bool TryParseMsgId (byte[] text, ref int index, int endIndex, bool requireAngleAddr, bool throwOnError, out string msgid)
 		{
-			//const CharType SpaceOrControl = CharType.IsWhitespace | CharType.IsControl;
+			// const CharType SpaceOrControl = CharType.IsWhitespace | CharType.IsControl;
+			var squareBrackets = false;
 			var angleAddr = false;
 
 			msgid = null;
@@ -400,7 +426,13 @@ namespace MimeKit.Utils {
 				return false;
 			}
 
-			var token = new StringBuilder ();
+			using var token = new ValueStringBuilder (128);
+
+			if (text[index] == '[') {
+				// Note: This seems to be a bug in Microsoft Exchange??
+				// See https://github.com/jstedfast/MimeKit/issues/912
+				squareBrackets = true;
+			}
 
 			// consume the local-part of the msg-id using a very loose definition of 'local-part'
 			//
@@ -412,7 +444,7 @@ namespace MimeKit.Utils {
 					if (!SkipQuoted (text, ref index, endIndex, throwOnError))
 						return false;
 				} else {
-					while (index < endIndex && text[index] != (byte) '.' && text[index] != (byte) '@' && text[index] != '>' && !text[index].IsWhitespace ())
+					while (index < endIndex && text[index] != (byte) '.' && text[index] != (byte) '@' && text[index] != (byte) '>' && !text[index].IsWhitespace ())
 						index++;
 				}
 
@@ -425,13 +457,12 @@ namespace MimeKit.Utils {
 					return false;
 				}
 
-				if (!SkipCommentsAndWhiteSpace (text, ref index, endIndex, throwOnError))
-					return false;
+				SkipWhiteSpace (text, ref index, endIndex);
 
 				if (index >= endIndex) {
 					if (angleAddr) {
 						if (throwOnError)
-							throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Incomplete msg-id token at offset {0}", tokenIndex), tokenIndex, index);
+							throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Incomplete msg-id at offset {0}", tokenIndex), tokenIndex, index);
 
 						return false;
 					}
@@ -443,18 +474,12 @@ namespace MimeKit.Utils {
 				if (text[index] == (byte) '@' || text[index] == (byte) '>')
 					break;
 
-				if (text[index] != (byte) '.') {
-					if (throwOnError)
-						throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Invalid msg-id token at offset {0}", tokenIndex), tokenIndex, index);
+				if (text[index] == (byte) '.') {
+					token.Append ('.');
+					index++;
 
-					return false;
+					SkipWhiteSpace (text, ref index, endIndex);
 				}
-
-				token.Append ('.');
-				index++;
-
-				if (!SkipCommentsAndWhiteSpace (text, ref index, endIndex, throwOnError))
-					return false;
 
 				if (index >= endIndex) {
 					if (throwOnError)
@@ -468,6 +493,12 @@ namespace MimeKit.Utils {
 				token.Append ('@');
 				index++;
 
+				// Note: some Message-Id's are broken and in the form "<local-part@@domain>"
+				//
+				// See https://github.com/jstedfast/MimeKit/issues/962 for details.
+				while (index < endIndex && text[index] == (byte) '@')
+					index++;
+
 				if (!SkipCommentsAndWhiteSpace (text, ref index, endIndex, throwOnError))
 					return false;
 
@@ -479,7 +510,7 @@ namespace MimeKit.Utils {
 							return false;
 
 						if (IsIdnEncoded (domain))
-							domain = IdnDecode (domain);
+							domain = MailboxAddress.IdnMapping.Decode (domain);
 
 						token.Append (domain);
 
@@ -504,6 +535,11 @@ namespace MimeKit.Utils {
 				}
 			}
 
+			if (squareBrackets && index < endIndex && text[index] == (byte) ']') {
+				token.Append (']');
+				index++;
+			}
+
 			if (angleAddr && (index >= endIndex || text[index] != '>')) {
 				if (throwOnError)
 					throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Incomplete msg-id token at offset {0}", tokenIndex), tokenIndex, index);
@@ -519,14 +555,26 @@ namespace MimeKit.Utils {
 			return true;
 		}
 
-		public static bool IsInternational (string value)
+		public static bool IsInternational (string value, int startIndex, int count)
 		{
-			for (int i = 0; i < value.Length; i++) {
+			int endIndex = startIndex + count;
+
+			for (int i = startIndex; i < endIndex; i++) {
 				if (value[i] > 127)
 					return true;
 			}
 
 			return false;
+		}
+
+		public static bool IsInternational (string value, int startIndex)
+		{
+			return IsInternational (value, startIndex, value.Length - startIndex);
+		}
+
+		public static bool IsInternational (string value)
+		{
+			return IsInternational (value, 0, value.Length);
 		}
 
 		public static bool IsIdnEncoded (string value)
@@ -535,24 +583,6 @@ namespace MimeKit.Utils {
 				return true;
 
 			return value.IndexOf (".xn--", StringComparison.Ordinal) != -1;
-		}
-
-		public static string IdnEncode (string unicode)
-		{
-			try {
-				return idn.GetAscii (unicode);
-			} catch {
-				return unicode;
-			}
-		}
-
-		public static string IdnDecode (string ascii)
-		{
-			try {
-				return idn.GetUnicode (ascii);
-			} catch {
-				return ascii;
-			}
 		}
     }
 }

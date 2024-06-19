@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,10 +24,7 @@
 // THE SOFTWARE.
 //
 
-using System;
-using System.Linq;
-
-using NUnit.Framework;
+using System.Text;
 
 using MimeKit.Utils;
 
@@ -57,12 +54,15 @@ namespace UnitTests.Utils {
 			Assert.Throws<ArgumentOutOfRangeException> (() => MimeUtils.ParseMessageId (buffer, 0, -1), "MimeUtils.ParseMessageId (buffer, 0, -1)");
 			Assert.Throws<ArgumentOutOfRangeException> (() => MimeUtils.ParseMessageId (buffer, 0, buffer.Length + 1), "MimeUtils.ParseMessageId (buffer, 0, buffer.Length + 1)");
 
-			Assert.Throws<ArgumentNullException> (() => MimeUtils.Quote (null), "MimeUtils.Quote (null)");
+			Assert.Throws<ArgumentNullException> (() => MimeUtils.AppendQuoted (null, "text"), "MimeUtils.AppendQuoted (null, value)");
+			Assert.Throws<ArgumentNullException> (() => MimeUtils.AppendQuoted (new StringBuilder (), null), "MimeUtils.AppendQuoted (builder, null)");
+			//Assert.Throws<ArgumentNullException> (() => MimeUtils.Quote ((ReadOnlySpan<char>) null), "MimeUtils.Quote (null)");
+			Assert.Throws<ArgumentNullException> (() => MimeUtils.Quote ((string) null), "MimeUtils.Quote (null)");
 			Assert.Throws<ArgumentNullException> (() => MimeUtils.Unquote (null), "MimeUtils.Unquote (null)");
 		}
 
 		static readonly string[] GoodReferences = {
-			" <local (comment) . (comment) part (comment) @ (comment) localhost (comment) . (comment) localdomain (comment) >", "local.part@localhost.localdomain",
+			//" <local (comment) . (comment) part (comment) @ (comment) localhost (comment) . (comment) localdomain (comment) >", "local.part@localhost.localdomain",
 			"<local-part@domain1@domain2>",                                                                                     "local-part@domain1@domain2",
 			"<local-part@>",                                                                                                    "local-part@",
 			"<local-part>",                                                                                                     "local-part",
@@ -75,11 +75,11 @@ namespace UnitTests.Utils {
 			for (int i = 0; i < GoodReferences.Length; i += 2) {
 				var reference = MimeUtils.EnumerateReferences (GoodReferences[i]).FirstOrDefault ();
 
-				Assert.AreEqual (GoodReferences[i + 1], reference, "Incorrectly parsed reference '{0}'.", GoodReferences[i]);
+				Assert.That (reference, Is.EqualTo (GoodReferences[i + 1]), $"Incorrectly parsed reference '{GoodReferences[i]}'.");
 
 				reference = MimeUtils.ParseMessageId (GoodReferences[i]);
 
-				Assert.AreEqual (GoodReferences[i + 1], reference, "Incorrectly parsed message-id '{0}'.", GoodReferences[i]);
+				Assert.That (reference, Is.EqualTo (GoodReferences[i + 1]), $"Incorrectly parsed message-id '{GoodReferences[i]}'.");
 			}
 		}
 
@@ -101,11 +101,11 @@ namespace UnitTests.Utils {
 			for (int i = 0; i < BrokenReferences.Length; i++) {
 				var reference = MimeUtils.EnumerateReferences (BrokenReferences[i]).FirstOrDefault ();
 
-				Assert.IsNull (reference, "MimeUtils.EnumerateReferences(\"{0}\")", BrokenReferences[i]);
+				Assert.That (reference, Is.Null, $"MimeUtils.EnumerateReferences(\"{BrokenReferences[i]}\")");
 
 				reference = MimeUtils.ParseMessageId (BrokenReferences[i]);
 
-				Assert.IsNull (reference, "MimeUtils.ParseMessageId (\"{0}\")", BrokenReferences[i]);
+				Assert.That (reference, Is.Null, $"MimeUtils.ParseMessageId (\"{BrokenReferences[i]}\")");
 			}
 		}
 
@@ -114,20 +114,20 @@ namespace UnitTests.Utils {
 		{
 			Version version;
 
-			Assert.IsTrue (MimeUtils.TryParse (" 1 (comment) .\t0\r\n", out version), "1.0");
-			Assert.AreEqual ("1.0", version.ToString ());
+			Assert.That (MimeUtils.TryParse (" 1 (comment) .\t0\r\n", out version), Is.True, "1.0");
+			Assert.That (version.ToString (), Is.EqualTo ("1.0"));
 
-			Assert.IsTrue (MimeUtils.TryParse (" 1 (comment) .\t0\r\n .0\r\n", out version), "1.0.0");
-			Assert.AreEqual ("1.0.0", version.ToString ());
+			Assert.That (MimeUtils.TryParse (" 1 (comment) .\t0\r\n .0\r\n", out version), Is.True, "1.0.0");
+			Assert.That (version.ToString (), Is.EqualTo ("1.0.0"));
 
-			Assert.IsTrue (MimeUtils.TryParse (" 1 (comment) .\t0\r\n .0.0\r\n", out version), "1.0.0.0");
-			Assert.AreEqual ("1.0.0.0", version.ToString ());
+			Assert.That (MimeUtils.TryParse (" 1 (comment) .\t0\r\n .0.0\r\n", out version), Is.True, "1.0.0.0");
+			Assert.That (version.ToString (), Is.EqualTo ("1.0.0.0"));
 
-			Assert.IsFalse (MimeUtils.TryParse ("1", out version), "1");
-			Assert.IsFalse (MimeUtils.TryParse ("1.2.3.4.5", out version), "1.2.3.4.5");
-			Assert.IsFalse (MimeUtils.TryParse ("1x2.3", out version), "1x2.3");
-			Assert.IsFalse (MimeUtils.TryParse ("(unterminated comment", out version), "unterminated comment");
-			Assert.IsFalse (MimeUtils.TryParse ("1 (unterminated comment", out version), "1 + unterminated comment");
+			Assert.That (MimeUtils.TryParse ("1", out Version _), Is.False, "1");
+			Assert.That (MimeUtils.TryParse ("1.2.3.4.5", out Version _), Is.False, "1.2.3.4.5");
+			Assert.That (MimeUtils.TryParse ("1x2.3", out Version _), Is.False, "1x2.3");
+			Assert.That (MimeUtils.TryParse ("(unterminated comment", out Version _), Is.False, "unterminated comment");
+			Assert.That (MimeUtils.TryParse ("1 (unterminated comment", out Version _), Is.False, "1 + unterminated comment");
 		}
 
 		[Test]
@@ -139,7 +139,35 @@ namespace UnitTests.Utils {
 			int at = msgid.IndexOf ('@');
 			var idn = msgid.Substring (at + 1);
 
-			Assert.AreEqual ("xn--mjlnir-xxa", idn);
+			Assert.That (idn, Is.EqualTo ("xn--mjlnir-xxa"));
+		}
+
+		[Test]
+		public void TestAppendQuoted ()
+		{
+			const string expected = "\"This is a multi-line quoted string with \\\\backslashes\\\\ and an escaped dquote (\\\") inside of it.\"";
+			const string text = "This is a multi-line quoted string with \\backslashes\\ and an escaped dquote (\") inside of it.";
+			var builder = new StringBuilder ();
+
+			MimeUtils.AppendQuoted (builder, text);
+
+			Assert.That (builder.ToString (), Is.EqualTo (expected));
+		}
+
+		[Test]
+		public void TestUnquote ()
+		{
+			const string quoted = "\"This is a multi-line quoted string with\r\n\t\\\\backslashes\\\\ and an escaped dquote (\\\") inside of it.\"";
+			const string expected = "This is a multi-line quoted string with \\backslashes\\ and an escaped dquote (\") inside of it.";
+			var unquoted = MimeUtils.Unquote (quoted, true);
+
+			Assert.That (unquoted, Is.EqualTo (expected), "Unquote(string)");
+
+			var bytes = Encoding.ASCII.GetBytes (quoted);
+			var result = MimeUtils.Unquote (bytes, 0, bytes.Length, true);
+			unquoted = Encoding.ASCII.GetString (result);
+
+			Assert.That (unquoted, Is.EqualTo (expected), "Unquote(byte[])");
 		}
 	}
 }

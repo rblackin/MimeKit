@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -83,7 +83,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the compression mode.
+		/// Get the compression mode.
 		/// </summary>
 		/// <remarks>
 		/// At least 12 bytes from the stream must be processed before this property value will
@@ -95,7 +95,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets a value indicating whether the crc32 is valid.
+		/// Get a value indicating whether the crc32 is valid.
 		/// </summary>
 		/// <remarks>
 		/// Until all data has been processed, this property will always return <c>false</c>.
@@ -201,9 +201,7 @@ namespace MimeKit.Tnef {
 
 			// read the compression mode magic if we haven't already...
 			if (state == FilterState.Magic) {
-				int magic;
-
-				if (!TryReadInt32 (input, ref index, endIndex, out magic)) {
+				if (!TryReadInt32 (input, ref index, endIndex, out int magic)) {
 					outputLength = 0;
 					outputIndex = 0;
 					return input;
@@ -321,7 +319,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Resets the filter.
+		/// Reset the filter.
 		/// </summary>
 		/// <remarks>
 		/// Resets the filter.

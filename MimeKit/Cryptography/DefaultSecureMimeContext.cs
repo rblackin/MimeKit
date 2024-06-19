@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -27,7 +27,10 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Security.Cryptography.X509Certificates;
 
 using Org.BouncyCastle.Pkcs;
 using Org.BouncyCastle.Pkix;
@@ -35,6 +38,10 @@ using Org.BouncyCastle.X509;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Asn1.X509;
 using Org.BouncyCastle.X509.Store;
+using Org.BouncyCastle.Security;
+using Org.BouncyCastle.Utilities.Collections;
+
+using X509Certificate = Org.BouncyCastle.X509.X509Certificate;
 
 namespace MimeKit.Cryptography {
 	/// <summary>
@@ -68,31 +75,30 @@ namespace MimeKit.Cryptography {
 		{
 			string path;
 
-#if !NETSTANDARD1_3 && !NETSTANDARD1_6
 			if (Path.DirectorySeparatorChar == '\\') {
 				var appData = Environment.GetFolderPath (Environment.SpecialFolder.ApplicationData);
-				path = Path.Combine (appData, "Roaming\\mimekit");
+				var compatPath = Path.Combine (appData, "Roaming\\mimekit");
+				path = Path.Combine (appData, "mimekit");
+
+				if (!Directory.Exists (path) && Directory.Exists (compatPath)) {
+					try {
+						Directory.Move (compatPath, path);
+					} catch {
+						path = compatPath;
+					}
+				}
 			} else {
-				var home = Environment.GetFolderPath (Environment.SpecialFolder.Personal);
+				var home = Environment.GetFolderPath (Environment.SpecialFolder.UserProfile);
 				path = Path.Combine (home, ".mimekit");
 			}
-#else
-			path = ".mimekit";
-#endif
 
 			DefaultDatabasePath = Path.Combine (path, "smime.db");
 		}
 
 		static void CheckIsAvailable ()
 		{
-			if (!SqliteCertificateDatabase.IsAvailable) {
-				const string format = "SQLite is not available. Install the {0} nuget.";
-#if NETSTANDARD1_3 || NETSTANDARD1_6
-				throw new NotSupportedException (string.Format (format, "Microsoft.Data.Sqlite"));
-#else
-				throw new NotSupportedException (string.Format (format, "System.Data.SQLite"));
-#endif
-			}
+			if (!SqliteCertificateDatabase.IsAvailable)
+				throw new NotSupportedException ("SQLite is not available. Install the System.Data.SQLite nuget package.");
 		}
 
 		/// <summary>
@@ -122,7 +128,41 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.IO.IOException">
 		/// An error occurred reading the file.
 		/// </exception>
-		public DefaultSecureMimeContext (string fileName, string password)
+		public DefaultSecureMimeContext (string fileName, string password) : this (fileName, password, new SecureRandom ())
+		{
+		}
+
+		/// <summary>
+		/// Initialize a new instance of the <see cref="DefaultSecureMimeContext"/> class.
+		/// </summary>
+		/// <remarks>
+		/// <para>Allows the program to specify its own location for the SQLite database. If the file does not exist,
+		/// it will be created and the necessary tables and indexes will be constructed.</para>
+		/// <para>Requires linking with Mono.Data.Sqlite.</para>
+		/// </remarks>
+		/// <param name="fileName">The path to the SQLite database.</param>
+		/// <param name="password">The password used for encrypting and decrypting the private keys.</param>
+		/// <param name="random">A secure pseudo-random number generator.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <para><paramref name="fileName"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="password"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="random"/> is <c>null</c>.</para>
+		/// </exception>
+		/// <exception cref="System.ArgumentException">
+		/// The specified file path is empty.
+		/// </exception>
+		/// <exception cref="System.NotSupportedException">
+		/// Mono.Data.Sqlite is not available.
+		/// </exception>
+		/// <exception cref="System.UnauthorizedAccessException">
+		/// The user does not have access to read the specified file.
+		/// </exception>
+		/// <exception cref="System.IO.IOException">
+		/// An error occurred reading the file.
+		/// </exception>
+		public DefaultSecureMimeContext (string fileName, string password, SecureRandom random) : base (random)
 		{
 			if (fileName == null)
 				throw new ArgumentNullException (nameof (fileName));
@@ -138,7 +178,7 @@ namespace MimeKit.Cryptography {
 			if (!string.IsNullOrEmpty (dir) && !Directory.Exists (dir))
 				Directory.CreateDirectory (dir);
 
-			dbase = new SqliteCertificateDatabase (fileName, password);
+			dbase = new SqliteCertificateDatabase (fileName, password, random);
 
 			if (!exists) {
 				// TODO: initialize our dbase with some root CA certificates.
@@ -153,6 +193,9 @@ namespace MimeKit.Cryptography {
 		/// <para>Requires linking with Mono.Data.Sqlite.</para>
 		/// </remarks>
 		/// <param name="password">The password used for encrypting and decrypting the private keys.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="password"/> is <c>null</c>.
+		/// </exception>
 		/// <exception cref="System.NotImplementedException">
 		/// Mono.Data.Sqlite is not available.
 		/// </exception>
@@ -163,6 +206,33 @@ namespace MimeKit.Cryptography {
 		/// An error occurred reading the database at the default location.
 		/// </exception>
 		public DefaultSecureMimeContext (string password) : this (DefaultDatabasePath, password)
+		{
+		}
+
+		/// <summary>
+		/// Initialize a new instance of the <see cref="DefaultSecureMimeContext"/> class.
+		/// </summary>
+		/// <remarks>
+		/// <para>Allows the program to specify its own password for the default database.</para>
+		/// <para>Requires linking with Mono.Data.Sqlite.</para>
+		/// </remarks>
+		/// <param name="password">The password used for encrypting and decrypting the private keys.</param>
+		/// <param name="random">A secure pseudo-random number generator.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <para><paramref name="password"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="random"/> is <c>null</c>.</para>
+		/// </exception>
+		/// <exception cref="System.NotImplementedException">
+		/// Mono.Data.Sqlite is not available.
+		/// </exception>
+		/// <exception cref="System.UnauthorizedAccessException">
+		/// The user does not have access to read the database at the default location.
+		/// </exception>
+		/// <exception cref="System.IO.IOException">
+		/// An error occurred reading the database at the default location.
+		/// </exception>
+		public DefaultSecureMimeContext (string password, SecureRandom random) : this (DefaultDatabasePath, password, random)
 		{
 		}
 
@@ -196,7 +266,24 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="database"/> is <c>null</c>.
 		/// </exception>
-		public DefaultSecureMimeContext (IX509CertificateDatabase database)
+		public DefaultSecureMimeContext (IX509CertificateDatabase database) : this (database, new SecureRandom ())
+		{
+		}
+
+		/// <summary>
+		/// Initialize a new instance of the <see cref="DefaultSecureMimeContext"/> class.
+		/// </summary>
+		/// <remarks>
+		/// This constructor is useful for supplying a custom <see cref="IX509CertificateDatabase"/>.
+		/// </remarks>
+		/// <param name="database">The certificate database.</param>
+		/// <param name="random">A secure pseudo-random number generator.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <para><paramref name="database"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="random"/> is <c>null</c>.</para>
+		/// </exception>
+		public DefaultSecureMimeContext (IX509CertificateDatabase database, SecureRandom random) : base (random)
 		{
 			if (database == null)
 				throw new ArgumentNullException (nameof (database));
@@ -212,10 +299,14 @@ namespace MimeKit.Cryptography {
 		/// </remarks>
 		/// <returns><c>true</c> if the mailbox address can be used for signing; otherwise, <c>false</c>.</returns>
 		/// <param name="signer">The signer.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="signer"/> is <c>null</c>.
 		/// </exception>
-		public override bool CanSign (MailboxAddress signer)
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		public override bool CanSign (MailboxAddress signer, CancellationToken cancellationToken = default)
 		{
 			if (signer == null)
 				throw new ArgumentNullException (nameof (signer));
@@ -238,10 +329,14 @@ namespace MimeKit.Cryptography {
 		/// </remarks>
 		/// <returns><c>true</c> if the cryptography context can be used to encrypt to the designated recipient; otherwise, <c>false</c>.</returns>
 		/// <param name="mailbox">The recipient's mailbox address.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="mailbox"/> is <c>null</c>.
 		/// </exception>
-		public override bool CanEncrypt (MailboxAddress mailbox)
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		public override bool CanEncrypt (MailboxAddress mailbox, CancellationToken cancellationToken = default)
 		{
 			if (mailbox == null)
 				throw new ArgumentNullException (nameof (mailbox));
@@ -266,7 +361,7 @@ namespace MimeKit.Cryptography {
 		/// </remarks>
 		/// <returns>The certificate on success; otherwise <c>null</c>.</returns>
 		/// <param name="selector">The search criteria for the certificate.</param>
-		protected override X509Certificate GetCertificate (IX509Selector selector)
+		protected override X509Certificate GetCertificate (ISelector<X509Certificate> selector)
 		{
 			return dbase.FindCertificates (selector).FirstOrDefault ();
 		}
@@ -279,7 +374,7 @@ namespace MimeKit.Cryptography {
 		/// </remarks>
 		/// <returns>The private key on success; otherwise <c>null</c>.</returns>
 		/// <param name="selector">The search criteria for the private key.</param>
-		protected override AsymmetricKeyParameter GetPrivateKey (IX509Selector selector)
+		protected override AsymmetricKeyParameter GetPrivateKey (ISelector<X509Certificate> selector)
 		{
 			return dbase.FindPrivateKeys (selector).FirstOrDefault ();
 		}
@@ -292,9 +387,9 @@ namespace MimeKit.Cryptography {
 		/// generally issued by a Certificate Authority (CA).
 		/// </remarks>
 		/// <returns>The trusted anchors.</returns>
-		protected override Org.BouncyCastle.Utilities.Collections.HashSet GetTrustedAnchors ()
+		protected override ISet<TrustAnchor> GetTrustedAnchors ()
 		{
-			var anchors = new Org.BouncyCastle.Utilities.Collections.HashSet ();
+			var anchors = new HashSet<TrustAnchor> ();
 			var selector = new X509CertStoreSelector ();
 			var keyUsage = new bool[9];
 
@@ -316,7 +411,7 @@ namespace MimeKit.Cryptography {
 		/// the end of the chain.
 		/// </remarks>
 		/// <returns>The intermediate certificates.</returns>
-		protected override IX509Store GetIntermediateCertificates ()
+		protected override IStore<X509Certificate> GetIntermediateCertificates ()
 		{
 			//var intermediates = new X509CertificateStore ();
 			//var selector = new X509CertStoreSelector ();
@@ -343,7 +438,7 @@ namespace MimeKit.Cryptography {
 		/// itself or by the owner of the revoked certificate.
 		/// </remarks>
 		/// <returns>The certificate revocation lists.</returns>
-		protected override IX509Store GetCertificateRevocationLists ()
+		protected override IStore<X509Crl> GetCertificateRevocationLists ()
 		{
 			return dbase.GetCrlStore ();
 		}
@@ -429,8 +524,9 @@ namespace MimeKit.Cryptography {
 			}
 
 			if (certificate != null && privateKey != null) {
-				var signer = new CmsSigner (BuildCertificateChain (certificate), privateKey);
-				signer.DigestAlgorithm = digestAlgo;
+				var signer = new CmsSigner (BuildCertificateChain (certificate), privateKey) {
+					DigestAlgorithm = digestAlgo
+				};
 
 				return signer;
 			}
@@ -452,9 +548,10 @@ namespace MimeKit.Cryptography {
 			X509CertificateRecord record;
 
 			if ((record = dbase.Find (certificate, AlgorithmFields)) == null) {
-				record = new X509CertificateRecord (certificate);
-				record.AlgorithmsUpdated = timestamp;
-				record.Algorithms = algorithms;
+				record = new X509CertificateRecord (certificate) {
+					AlgorithmsUpdated = timestamp,
+					Algorithms = algorithms
+				};
 
 				dbase.Add (record);
 			} else if (timestamp > record.AlgorithmsUpdated) {
@@ -466,22 +563,77 @@ namespace MimeKit.Cryptography {
 		}
 
 		/// <summary>
-		/// Imports a certificate.
+		/// Import a certificate.
 		/// </summary>
 		/// <remarks>
 		/// Imports the specified certificate into the database.
 		/// </remarks>
 		/// <param name="certificate">The certificate.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="certificate"/> is <c>null</c>.
 		/// </exception>
-		public override void Import (X509Certificate certificate)
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		public override void Import (X509Certificate certificate, CancellationToken cancellationToken = default)
 		{
 			if (certificate == null)
 				throw new ArgumentNullException (nameof (certificate));
 
+			cancellationToken.ThrowIfCancellationRequested ();
+
 			if (dbase.Find (certificate, X509CertificateRecordFields.Id) == null)
 				dbase.Add (new X509CertificateRecord (certificate));
+		}
+
+		/// <summary>
+		/// Import a certificate.
+		/// </summary>
+		/// <remarks>
+		/// Imports a certificate.
+		/// </remarks>
+		/// <param name="certificate">The certificate.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="certificate"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was cancelled via the cancellation token.
+		/// </exception>
+		public override void Import (X509Certificate2 certificate, CancellationToken cancellationToken = default)
+		{
+			if (certificate == null)
+				throw new ArgumentNullException (nameof (certificate));
+
+			cancellationToken.ThrowIfCancellationRequested ();
+
+			var cert = certificate.AsBouncyCastleCertificate ();
+
+			if (certificate.HasPrivateKey) {
+				var privateKey = certificate.GetPrivateKeyAsAsymmetricKeyParameter ();
+				X509CertificateRecord record;
+
+				if ((record = dbase.Find (cert, ImportPkcs12Fields)) == null) {
+					if (privateKey != null)
+						record = new X509CertificateRecord (cert, privateKey);
+					else
+						record = new X509CertificateRecord (cert);
+
+					record.Algorithms = EnabledEncryptionAlgorithms;
+					record.AlgorithmsUpdated = DateTime.UtcNow;
+					record.IsTrusted = privateKey != null;
+					dbase.Add (record);
+				} else {
+					record.AlgorithmsUpdated = DateTime.UtcNow;
+					record.Algorithms = EnabledEncryptionAlgorithms;
+					record.PrivateKey ??= privateKey;
+					record.IsTrusted = record.IsTrusted || privateKey != null;
+					dbase.Update (record, ImportPkcs12Fields);
+				}
+			} else {
+				Import (cert, true, cancellationToken);
+			}
 		}
 
 		/// <summary>
@@ -491,13 +643,19 @@ namespace MimeKit.Cryptography {
 		/// Imports the specified certificate revocation list.
 		/// </remarks>
 		/// <param name="crl">The certificate revocation list.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="crl"/> is <c>null</c>.
 		/// </exception>
-		public override void Import (X509Crl crl)
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		public override void Import (X509Crl crl, CancellationToken cancellationToken = default)
 		{
 			if (crl == null)
 				throw new ArgumentNullException (nameof (crl));
+
+			cancellationToken.ThrowIfCancellationRequested ();
 
 			// check for an exact match...
 			if (dbase.Find (crl, X509CrlRecordFields.Id) != null)
@@ -534,15 +692,19 @@ namespace MimeKit.Cryptography {
 		/// </remarks>
 		/// <param name="stream">The raw certificate and key data.</param>
 		/// <param name="password">The password to unlock the data.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <para><paramref name="stream"/> is <c>null</c>.</para>
 		/// <para>-or-</para>
 		/// <para><paramref name="password"/> is <c>null</c>.</para>
 		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
 		/// <exception cref="Org.BouncyCastle.Cms.CmsException">
 		/// An error occurred in the cryptographic message syntax subsystem.
 		/// </exception>
-		public override void Import (Stream stream, string password)
+		public override void Import (Stream stream, string password, CancellationToken cancellationToken = default)
 		{
 			if (stream == null)
 				throw new ArgumentNullException (nameof (stream));
@@ -550,7 +712,10 @@ namespace MimeKit.Cryptography {
 			if (password == null)
 				throw new ArgumentNullException (nameof (password));
 
-			var pkcs12 = new Pkcs12Store (stream, password.ToCharArray ());
+			cancellationToken.ThrowIfCancellationRequested ();
+
+			var pkcs12 = new Pkcs12StoreBuilder ().Build ();
+			pkcs12.Load (stream, password.ToCharArray ());
 			var enabledAlgorithms = EnabledEncryptionAlgorithms;
 			X509CertificateRecord record;
 
@@ -562,16 +727,16 @@ namespace MimeKit.Cryptography {
 
 					if (entry.Key.IsPrivate) {
 						if ((record = dbase.Find (chain[0].Certificate, ImportPkcs12Fields)) == null) {
-							record = new X509CertificateRecord (chain[0].Certificate, entry.Key);
-							record.AlgorithmsUpdated = DateTime.UtcNow;
-							record.Algorithms = enabledAlgorithms;
-							record.IsTrusted = true;
+							record = new X509CertificateRecord (chain[0].Certificate, entry.Key) {
+								AlgorithmsUpdated = DateTime.UtcNow,
+								Algorithms = enabledAlgorithms,
+								IsTrusted = true
+							};
 							dbase.Add (record);
 						} else {
 							record.AlgorithmsUpdated = DateTime.UtcNow;
 							record.Algorithms = enabledAlgorithms;
-							if (record.PrivateKey == null)
-								record.PrivateKey = entry.Key;
+							record.PrivateKey ??= entry.Key;
 							record.IsTrusted = true;
 							dbase.Update (record, ImportPkcs12Fields);
 						}
@@ -580,19 +745,46 @@ namespace MimeKit.Cryptography {
 					}
 
 					for (int i = startIndex; i < chain.Length; i++)
-						Import (chain[i].Certificate, true);
+						Import (chain[i].Certificate, true, cancellationToken);
 				} else if (pkcs12.IsCertificateEntry (alias)) {
 					var entry = pkcs12.GetCertificate (alias);
 
-					Import (entry.Certificate, true);
+					Import (entry.Certificate, true, cancellationToken);
 				}
 			}
+		}
+
+		/// <summary>
+		/// Asynchronously imports certificates and keys from a pkcs12-encoded stream.
+		/// </summary>
+		/// <remarks>
+		/// Asynchronously imports all of the certificates and keys from the pkcs12-encoded stream.
+		/// </remarks>
+		/// <returns>An asynchronous task context.</returns>
+		/// <param name="stream">The raw certificate and key data.</param>
+		/// <param name="password">The password to unlock the data.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <para><paramref name="stream"/> is <c>null</c>.</para>
+		/// <para>-or-</para>
+		/// <para><paramref name="password"/> is <c>null</c>.</para>
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		/// <exception cref="Org.BouncyCastle.Cms.CmsException">
+		/// An error occurred in the cryptographic message syntax subsystem.
+		/// </exception>
+		public override Task ImportAsync (Stream stream, string password, CancellationToken cancellationToken = default)
+		{
+			Import (stream, password, cancellationToken);
+			return Task.FromResult (true);
 		}
 
 		#endregion
 
 		/// <summary>
-		/// Imports a certificate.
+		/// Import a certificate.
 		/// </summary>
 		/// <remarks>
 		/// <para>Imports the certificate.</para>
@@ -602,10 +794,14 @@ namespace MimeKit.Cryptography {
 		/// </remarks>
 		/// <param name="certificate">The certificate.</param>
 		/// <param name="trusted"><c>true</c> if the certificate is trusted; otherwise, <c>false</c>.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="certificate"/> is <c>null</c>.
 		/// </exception>
-		public void Import (X509Certificate certificate, bool trusted)
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		public void Import (X509Certificate certificate, bool trusted, CancellationToken cancellationToken = default)
 		{
 			if (certificate == null)
 				throw new ArgumentNullException (nameof (certificate));
@@ -621,31 +817,87 @@ namespace MimeKit.Cryptography {
 				return;
 			}
 
-			record = new X509CertificateRecord (certificate);
-			record.IsTrusted = trusted;
+			record = new X509CertificateRecord (certificate) {
+				IsTrusted = trusted
+			};
 			dbase.Add (record);
 		}
 
 		/// <summary>
-		/// Imports a DER-encoded certificate stream.
+		/// Asynchronously import a certificate.
+		/// </summary>
+		/// <remarks>
+		/// <para>Asynchronously imports the certificate.</para>
+		/// <para>If the certificate already exists in the database and <paramref name="trusted"/> is <c>true</c>,
+		/// then the IsTrusted state is updated otherwise the certificate is added to the database with the
+		/// specified trust.</para>
+		/// </remarks>
+		/// <returns>An asynchronous task context.</returns>
+		/// <param name="certificate">The certificate.</param>
+		/// <param name="trusted"><c>true</c> if the certificate is trusted; otherwise, <c>false</c>.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="certificate"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		public Task ImportAsync (X509Certificate certificate, bool trusted, CancellationToken cancellationToken = default)
+		{
+			// TODO: Add Async APIs to IX509CertificateDatabase
+			Import (certificate, trusted, cancellationToken);
+			return Task.FromResult (true);
+		}
+
+		/// <summary>
+		/// Import a DER-encoded certificate stream.
 		/// </summary>
 		/// <remarks>
 		/// Imports the certificate(s).
 		/// </remarks>
 		/// <param name="stream">The raw certificate(s).</param>
 		/// <param name="trusted"><c>true</c> if the certificates are trusted; othewrwise, <c>false</c>.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="stream"/> is <c>null</c>.
 		/// </exception>
-		public void Import (Stream stream, bool trusted)
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		public void Import (Stream stream, bool trusted, CancellationToken cancellationToken = default)
 		{
 			if (stream == null)
 				throw new ArgumentNullException (nameof (stream));
 
+			cancellationToken.ThrowIfCancellationRequested ();
+
 			var parser = new X509CertificateParser ();
 
 			foreach (X509Certificate certificate in parser.ReadCertificates (stream))
-				Import (certificate, trusted);
+				Import (certificate, trusted, cancellationToken);
+		}
+
+		/// <summary>
+		/// Asynchronously import a DER-encoded certificate stream.
+		/// </summary>
+		/// <remarks>
+		/// Asynchronously imports the certificate(s).
+		/// </remarks>
+		/// <returns>An asynchronous task context.</returns>
+		/// <param name="stream">The raw certificate(s).</param>
+		/// <param name="trusted"><c>true</c> if the certificates are trusted; othewrwise, <c>false</c>.</param>
+		/// <param name="cancellationToken">The cancellation token.</param>
+		/// <exception cref="System.ArgumentNullException">
+		/// <paramref name="stream"/> is <c>null</c>.
+		/// </exception>
+		/// <exception cref="System.OperationCanceledException">
+		/// The operation was canceled via the cancellation token.
+		/// </exception>
+		public Task ImportAsync (Stream stream, bool trusted, CancellationToken cancellationToken = default)
+		{
+			// TODO: Add Async APIs to IX509CertificateDatabase
+			Import (stream, trusted, cancellationToken);
+			return Task.FromResult (true);
 		}
 
 		/// <summary>

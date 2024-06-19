@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2014-2020 Jeffrey Stedfast
+// Copyright (c) 2014-2024 Jeffrey Stedfast
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,14 +24,15 @@
 // THE SOFTWARE.
 //
 
+using System;
 using System.Collections.Generic;
+
+using Foundation;
+using UIKit;
 
 using MimeKit;
 using MimeKit.Text;
 using MimeKit.Tnef;
-
-using Foundation;
-using UIKit;
 
 namespace MessageReader.iOS {
 	/// <summary>
@@ -80,15 +81,36 @@ namespace MessageReader.iOS {
 			stack.RemoveAt (stack.Count - 1);
 		}
 
-		// Sets the "oncontextmenu" <body> attribute to "return false;"
+		// Modifies various HTML attributes for better suitability for rendering.
 		void HtmlTagCallback (HtmlTagContext ctx, HtmlWriter htmlWriter)
 		{
-			if (ctx.TagId == HtmlTagId.Body && !ctx.IsEndTag) {
+			if (ctx.TagId == HtmlTagId.Meta && !ctx.IsEndTag) {
+				bool isContentType = false;
+
+				ctx.WriteTag (htmlWriter, false);
+
+				// replace charsets with "utf-8" since our output will be in utf-8 (and not whatever the original charset was)
+				foreach (var attribute in ctx.Attributes) {
+					if (attribute.Id == HtmlAttributeId.Charset) {
+						htmlWriter.WriteAttributeName (attribute.Name);
+						htmlWriter.WriteAttributeValue ("utf-8");
+					} else if (isContentType && attribute.Id == HtmlAttributeId.Content) {
+						htmlWriter.WriteAttributeName (attribute.Name);
+						htmlWriter.WriteAttributeValue ("text/html; charset=utf-8");
+					} else {
+						if (attribute.Id == HtmlAttributeId.HttpEquiv && attribute.Value != null
+							&& attribute.Value.Equals ("Content-Type", StringComparison.OrdinalIgnoreCase))
+							isContentType = true;
+
+						htmlWriter.WriteAttribute (attribute);
+					}
+				}
+			} else if (ctx.TagId == HtmlTagId.Body && !ctx.IsEndTag) {
 				ctx.WriteTag (htmlWriter, false);
 
 				// add and/or replace oncontextmenu="return false;"
 				foreach (var attribute in ctx.Attributes) {
-					if (attribute.Name.ToLowerInvariant () == "oncontextmenu")
+					if (attribute.Name.Equals ("oncontextmenu", StringComparison.OrdinalIgnoreCase))
 						continue;
 
 					htmlWriter.WriteAttribute (attribute);
@@ -119,7 +141,7 @@ namespace MessageReader.iOS {
 				var flowed = new FlowedToHtml ();
 
 				if (entity.ContentType.Parameters.TryGetValue ("delsp", out string delsp))
-					flowed.DeleteSpace = delsp.ToLowerInvariant () == "yes";
+					flowed.DeleteSpace = delsp.Equals ("yes", StringComparison.OrdinalIgnoreCase);
 
 				converter = flowed;
 			} else {

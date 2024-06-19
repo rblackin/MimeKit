@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -39,6 +39,7 @@ namespace MimeKit {
 	/// </remarks>
 	public static class MimeTypes
 	{
+		// Note: The official mime-type registry can be found at https://www.iana.org/assignments/media-types/media-types.xhtml
 		static readonly Dictionary<string, string> extensions;
 		static readonly Dictionary<string, string> mimeTypes;
 
@@ -85,6 +86,7 @@ namespace MimeKit {
 				{ ".avi", "video/avi" },
 				{ ".avs", "video/avs-video" },
 				{ ".axs", "application/olescript" },
+				{ ".azw", "application/vnd.amazon.ebook" },
 				{ ".bas", "text/plain" },
 				{ ".bcpio", "application/x-bcpio" },
 				{ ".bin", "application/octet-stream" },
@@ -153,6 +155,7 @@ namespace MimeKit {
 				{ ".dxr", "application/x-director" },
 				{ ".el", "text/x-script.elisp" },
 				{ ".elc", "application/x-elc" },
+				{ ".emf", "image/emf" },
 				{ ".eml", "message/rfc822" },
 				{ ".eot", "application/vnd.bw-fontobject" },
 				{ ".eps", "application/postscript" },
@@ -201,7 +204,7 @@ namespace MimeKit {
 				{ ".htm", "text/html" },
 				{ ".htt", "text/webviewhtml" },
 				{ ".htx", "text/html" },
-				{ ".ico", "image/x-icon" },
+				{ ".ico", "image/vnd.microsoft.icon" },
 				{ ".ics", "text/calendar" },
 				{ ".idc", "text/plain" },
 				{ ".ief", "image/ief" },
@@ -231,8 +234,9 @@ namespace MimeKit {
 				{ ".jpe", "image/jpeg" },
 				{ ".jpg", "image/jpeg" },
 				{ ".jps", "image/x-jps" },
-				{ ".js", "application/javascript" },
+				{ ".js", "text/javascript" },
 				{ ".json", "application/json" },
+				{ ".jsonld", "application/ld+json" },
 				{ ".jut", "image/jutvision" },
 				{ ".kar", "audio/midi" },
 				{ ".ksh", "text/x-script.ksh" },
@@ -273,6 +277,8 @@ namespace MimeKit {
 				{ ".mif", "application/x-mif" },
 				{ ".mjf", "audio/x-vnd.AudioExplosion.MjuiceMediaFile" },
 				{ ".mjpg", "video/x-motion-jpeg" },
+				{ ".mjs", "text/javascript" },
+				{ ".mkv", "video/x-matroska" },
 				{ ".mm", "application/base64" },
 				{ ".mme", "application/base64" },
 				{ ".mny", "application/x-msmoney" },
@@ -297,6 +303,7 @@ namespace MimeKit {
 				{ ".mpx", "application/x-project" },
 				{ ".mrc", "application/marc" },
 				{ ".ms", "application/x-troff-ms" },
+				{ ".msg", "application/vnd.ms-outlook" },
 				{ ".msh", "model/mesh" },
 				{ ".m", "text/plain" },
 				{ ".mvb", "application/x-msmediaview" },
@@ -313,7 +320,9 @@ namespace MimeKit {
 				{ ".nvd", "application/x-navidoc" },
 				{ ".nws", "message/rfc822" },
 				{ ".oda", "application/oda" },
-				{ ".ods", "application/oleobject" },
+				{ ".odp", "application/vnd.oasis.opendocument.presentation" },
+				{ ".ods", "application/vnd.oasis.opendocument.spreadsheet" },
+				{ ".odt", "application/vnd.oasis.opendocument.text" },
 				{ ".oga", "audio/ogg" },
 				{ ".ogg", "audio/ogg" },
 				{ ".ogv", "video/ogg" },
@@ -321,7 +330,7 @@ namespace MimeKit {
 				{ ".omc", "application/x-omc" },
 				{ ".omcd", "application/x-omcdatamaker" },
 				{ ".omcr", "application/x-omcregerator" },
-				{ ".opus", "audio/ogg" },
+				{ ".opus", "audio/opus" },
 				{ ".otf", "font/otf" },
 				{ ".oxps", "application/oxps" },
 				{ ".p10", "application/pkcs10" },
@@ -388,6 +397,7 @@ namespace MimeKit {
 				{ ".qt", "video/quicktime" },
 				{ ".ra", "audio/x-pn-realaudio" },
 				{ ".ram", "audio/x-pn-realaudio" },
+				{ ".rar", "application/vnd.rar" },
 				{ ".ras", "application/x-cmu-raster" },
 				{ ".rast", "image/cmu-raster" },
 				{ ".rexx", "text/x-script.rexx" },
@@ -664,6 +674,7 @@ namespace MimeKit {
 				{ "application/toolbook", ".tbk" },
 				{ "application/typescript", ".ts" },
 				{ "application/vda", ".vda" },
+				{ "application/vnd.amazon.ebook", ".azw" },
 				{ "application/vnd.bw-fontobject", ".eot" },
 				{ "application/vnd.fdf", ".fdf" },
 				{ "application/vnd.hp-HPGL", ".hgl" },
@@ -673,6 +684,7 @@ namespace MimeKit {
 				{ "application/vnd.ms-excel.sheet.macroEnabled.12", ".xlsm" },
 				{ "application/vnd.ms-excel.template.macroEnabled.12", ".xltm" },
 				{ "application/vnd.ms-htmlhelp", ".chm" },
+				{ "application/vnd.ms-outlook", ".msg" },
 				{ "application/vnd.ms-pki.certstore", ".sst" },
 				{ "application/vnd.ms-pki.pko", ".pko" },
 				{ "application/vnd.ms-pki.seccat", ".cat" },
@@ -687,6 +699,9 @@ namespace MimeKit {
 				{ "application/vnd.ms-works", ".wcm" },
 				{ "application/vnd.ms-xpsdocument", ".xps" },
 				{ "application/vnd.nokia.configuration-message", ".ncm" },
+				{ "application/vnd.oasis.opendocument.presentation", ".odp" },
+				{ "application/vnd.oasis.opendocument.spreadsheet", ".ods" },
+				{ "application/vnd.oasis.opendocument.text", ".odt" },
 				{ "application/vnd.openxmlformats-officedocument.presentationml.presentation", ".pptx" },
 				{ "application/vnd.openxmlformats-officedocument.presentationml.slideshow", ".ppsx" },
 				{ "application/vnd.openxmlformats-officedocument.presentationml.template", ".potx" },
@@ -694,6 +709,7 @@ namespace MimeKit {
 				{ "application/vnd.openxmlformats-officedocument.spreadsheetml.template", ".xltx" },
 				{ "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx" },
 				{ "application/vnd.openxmlformats-officedocument.wordprocessingml.template", ".dotx" },
+				{ "application/vnd.rar", ".rar" },
 				{ "application/vnd.rn-realmedia", ".rm" },
 				{ "application/vnd.rn-realplayer", ".rnx" },
 				{ "application/vnd.wap.wmlc", ".wmlc" },
@@ -830,6 +846,7 @@ namespace MimeKit {
 				{ "audio/mpeg", ".mp3" },
 				{ "audio/nspaudio", ".la" },
 				{ "audio/ogg", ".ogg" },
+				{ "audio/opus", ".opus" },
 				{ "audio/s3m", ".s3m" },
 				{ "audio/tsp-audio", ".tsi" },
 				{ "audio/tsplayer", ".tsp" },
@@ -861,6 +878,7 @@ namespace MimeKit {
 				{ "image/bmp", ".bmp" },
 				{ "image/cis-cod", ".cod" },
 				{ "image/cmu-raster", ".rast" },
+				{ "image/emf", ".emf" },
 				{ "image/fif", ".fif" },
 				{ "image/g3fax", ".g3" },
 				{ "image/gif", ".gif" },
@@ -874,6 +892,7 @@ namespace MimeKit {
 				{ "image/tiff", ".tif" },
 				{ "image/vasa", ".mcf" },
 				{ "image/vnd.fpx", ".fpx" },
+				{ "image/vnd.microsoft.icon", ".ico" },
 				{ "image/vnd.rn-realflash", ".rf" },
 				{ "image/vnd.rn-realpix", ".rp" },
 				{ "image/vnd.wap.wbmp", ".wbmp" },
@@ -881,8 +900,8 @@ namespace MimeKit {
 				{ "image/webp", ".webp" },
 				{ "image/wmf", ".wmf" },
 				{ "image/x-cmx", ".cmx" },
+				{ "image/x-emf", ".emf" },
 				{ "image/x-dwg", ".svf" },
-				{ "image/x-icon", ".ico" },
 				{ "image/x-jg", ".art" },
 				{ "image/x-jps", ".jps" },
 				{ "image/x-niff", ".niff" },
@@ -915,6 +934,7 @@ namespace MimeKit {
 				{ "text/h323", ".323" },
 				{ "text/html", ".html" },
 				{ "text/iuls", ".uls" },
+				{ "text/javascript", ".js" },
 				{ "text/markdown", ".md" },
 				{ "text/pascal", ".pas" },
 				{ "text/plain", ".txt" },
@@ -976,6 +996,7 @@ namespace MimeKit {
 				{ "video/x-dv", ".dif" },
 				{ "video/x-isvideo", ".isu" },
 				{ "video/x-ivf", ".ivf" },
+				{ "video/x-matroska", ".mkv" },
 				{ "video/x-motion-jpeg", ".mjpg" },
 				{ "video/x-ms-asf", ".asf" },
 				{ "video/x-ms-wmp", ".wmp" },
@@ -1000,7 +1021,7 @@ namespace MimeKit {
 		/// </exception>
 		public static string GetMimeType (string fileName)
 		{
-			if (fileName == null)
+			if (fileName is null)
 				throw new ArgumentNullException (nameof (fileName));
 
 			var extension = Path.GetExtension (fileName);
@@ -1024,7 +1045,7 @@ namespace MimeKit {
 		/// </exception>
 		public static bool TryGetExtension (string mimeType, out string extension)
 		{
-			if (mimeType == null)
+			if (mimeType is null)
 				throw new ArgumentNullException (nameof (mimeType));
 
 			return extensions.TryGetValue (mimeType, out extension);
@@ -1052,13 +1073,13 @@ namespace MimeKit {
 		/// </exception>
 		public static void Register (string mimeType, string extension)
 		{
-			if (mimeType == null)
+			if (mimeType is null)
 				throw new ArgumentNullException (nameof (mimeType));
 
 			if (mimeType.Length == 0)
 				throw new ArgumentException ("Cannot register an empty MIME-type.", nameof (mimeType));
 
-			if (extension == null)
+			if (extension is null)
 				throw new ArgumentNullException (nameof (extension));
 
 			if (extension.Length == 0)

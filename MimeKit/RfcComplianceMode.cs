@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -33,7 +33,12 @@ namespace MimeKit {
 	/// </remarks>
 	public enum RfcComplianceMode {
 		/// <summary>
-		/// Attempt to be much more liberal accepting broken and/or invalid formatting.
+		/// Attempt to be even more liberal in accepting broken and/or invalid formatting.
+		/// </summary>
+		Looser = -1,
+
+		/// <summary>
+		/// Attempt to be more liberal accepting broken and/or invalid formatting.
 		/// </summary>
 		Loose,
 

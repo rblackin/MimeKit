@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 Xamarin Inc. (www.xamarin.com)
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -31,8 +31,7 @@ using Org.BouncyCastle.Math;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Parameters;
 
-namespace MimeKit.Cryptography
-{
+namespace MimeKit.Cryptography {
 	/// <summary>
 	/// Extension methods for System.Security.Cryptography.AsymmetricAlgorithm.
 	/// </summary>
@@ -236,9 +235,9 @@ namespace MimeKit.Cryptography
 				parameters.Seed = key.Parameters.ValidationParameters.GetSeed ();
 			}
 
-			parameters.G = key.Parameters.G.ToByteArrayUnsigned ();
 			parameters.P = key.Parameters.P.ToByteArrayUnsigned ();
 			parameters.Q = key.Parameters.Q.ToByteArrayUnsigned ();
+			parameters.G = GetPaddedByteArray (key.Parameters.G, parameters.P.Length);
 
 			return parameters;
 		}
@@ -246,10 +245,10 @@ namespace MimeKit.Cryptography
 		static AsymmetricAlgorithm GetAsymmetricAlgorithm (DsaPrivateKeyParameters key, DsaPublicKeyParameters pub)
 		{
 			var parameters = GetDSAParameters (key);
-			parameters.X = key.X.ToByteArrayUnsigned ();
+			parameters.X = GetPaddedByteArray (key.X, parameters.Q.Length);
 
 			if (pub != null)
-				parameters.Y = pub.Y.ToByteArrayUnsigned ();
+				parameters.Y = GetPaddedByteArray (pub.Y, parameters.P.Length);
 
 			var dsa = new DSACryptoServiceProvider ();
 
@@ -261,7 +260,7 @@ namespace MimeKit.Cryptography
 		static AsymmetricAlgorithm GetAsymmetricAlgorithm (DsaPublicKeyParameters key)
 		{
 			var parameters = GetDSAParameters (key);
-			parameters.Y = key.Y.ToByteArrayUnsigned ();
+			parameters.Y = GetPaddedByteArray (key.Y, parameters.P.Length);
 
 			var dsa = new DSACryptoServiceProvider ();
 
@@ -272,12 +271,12 @@ namespace MimeKit.Cryptography
 
 		static AsymmetricAlgorithm GetAsymmetricAlgorithm (RsaPrivateCrtKeyParameters key)
 		{
-			var parameters = new RSAParameters ();
-
-			parameters.Exponent = key.PublicExponent.ToByteArrayUnsigned ();
-			parameters.Modulus = key.Modulus.ToByteArrayUnsigned ();
-			parameters.P = key.P.ToByteArrayUnsigned ();
-			parameters.Q = key.Q.ToByteArrayUnsigned ();
+			var parameters = new RSAParameters {
+				Exponent = key.PublicExponent.ToByteArrayUnsigned (),
+				Modulus = key.Modulus.ToByteArrayUnsigned (),
+				P = key.P.ToByteArrayUnsigned (),
+				Q = key.Q.ToByteArrayUnsigned ()
+			};
 
 			parameters.InverseQ = GetPaddedByteArray (key.QInv, parameters.Q.Length);
 			parameters.D = GetPaddedByteArray (key.Exponent, parameters.Modulus.Length);
@@ -293,9 +292,10 @@ namespace MimeKit.Cryptography
 
 		static AsymmetricAlgorithm GetAsymmetricAlgorithm (RsaKeyParameters key)
 		{
-			var parameters = new RSAParameters ();
-			parameters.Exponent = key.Exponent.ToByteArrayUnsigned ();
-			parameters.Modulus = key.Modulus.ToByteArrayUnsigned ();
+			var parameters = new RSAParameters {
+				Exponent = key.Exponent.ToByteArrayUnsigned (),
+				Modulus = key.Modulus.ToByteArrayUnsigned ()
+			};
 
 			var rsa = new RSACryptoServiceProvider ();
 
@@ -321,6 +321,7 @@ namespace MimeKit.Cryptography
 		/// </exception>
 		public static AsymmetricAlgorithm AsAsymmetricAlgorithm (this AsymmetricKeyParameter key)
 		{
+			// TODO: Drop this API - it's no longer needed. The WindowsSecureMimeContext now exports the certificate & key into a pkcs12 and then loads that into an X509Certificate2.
 			if (key == null)
 				throw new ArgumentNullException (nameof (key));
 
@@ -358,6 +359,7 @@ namespace MimeKit.Cryptography
 		/// </exception>
 		public static AsymmetricAlgorithm AsAsymmetricAlgorithm (this AsymmetricCipherKeyPair key)
 		{
+			// TODO: Drop this API - it's no longer needed. The WindowsSecureMimeContext now exports the certificate & key into a pkcs12 and then loads that into an X509Certificate2.
 			if (key == null)
 				throw new ArgumentNullException (nameof (key));
 

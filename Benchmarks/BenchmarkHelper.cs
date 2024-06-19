@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -26,6 +26,7 @@
 
 using System;
 using System.IO;
+using System.Text;
 
 namespace Benchmarks {
 	static class BenchmarkHelper
@@ -35,18 +36,8 @@ namespace Benchmarks {
 
 		static BenchmarkHelper ()
 		{
-			var codeBase = typeof (BenchmarkHelper).Assembly.CodeBase;
-			if (codeBase.StartsWith ("file://", StringComparison.OrdinalIgnoreCase))
-				codeBase = codeBase.Substring ("file://".Length);
-
-			if (Path.DirectorySeparatorChar == '\\') {
-				if (codeBase[0] == '/')
-					codeBase = codeBase.Substring (1);
-
-				codeBase = codeBase.Replace ('/', '\\');
-			}
-
-			var dir = Path.GetDirectoryName (codeBase);
+			var location = typeof (BenchmarkHelper).Assembly.Location;
+			var dir = Path.GetDirectoryName (location);
 
 			while (Path.GetFileName (dir) != "Benchmarks")
 				dir = Path.GetFullPath (Path.Combine (dir, ".."));
@@ -56,6 +47,8 @@ namespace Benchmarks {
 			dir = Path.Combine (dir, "..", "UnitTests");
 
 			UnitTestsDir = Path.GetFullPath (dir);
+
+			Encoding.RegisterProvider (CodePagesEncodingProvider.Instance);
 		}
 	}
 }

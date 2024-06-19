@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -39,7 +39,7 @@ namespace MimeKit {
 	/// <example>
 	/// <code language="c#" source="Examples\MessageDeliveryStatusExamples.cs" region="ProcessDeliveryStatusNotification" />
 	/// </example>
-	public class MultipartReport : Multipart
+	public class MultipartReport : Multipart, IMultipartReport
 	{
 		/// <summary>
 		/// Initialize a new instance of the <see cref="MultipartReport"/> class.
@@ -73,7 +73,7 @@ namespace MimeKit {
 		/// </exception>
 		public MultipartReport (string reportType, params object[] args) : base ("report", args)
 		{
-			if (reportType == null)
+			if (reportType is null)
 				throw new ArgumentNullException (nameof (reportType));
 
 			ReportType = reportType;
@@ -91,14 +91,19 @@ namespace MimeKit {
 		/// </exception>
 		public MultipartReport (string reportType) : base ("report")
 		{
-			if (reportType == null)
+			if (reportType is null)
 				throw new ArgumentNullException (nameof (reportType));
 
 			ReportType = reportType;
 		}
 
+		void CheckDisposed ()
+		{
+			CheckDisposed (nameof (MultipartReport));
+		}
+
 		/// <summary>
-		/// Gets or sets the type of the report.
+		/// Get or set the type of the report.
 		/// </summary>
 		/// <remarks>
 		/// <para>Gets or sets the type of the report.</para>
@@ -112,11 +117,20 @@ namespace MimeKit {
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="value"/> is <c>null</c>.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MultipartReport"/> has been disposed.
+		/// </exception>
 		public string ReportType {
-			get { return ContentType.Parameters["report-type"]; }
+			get {
+				CheckDisposed ();
+
+				return ContentType.Parameters["report-type"];
+			}
 			set {
-				if (value == null)
+				if (value is null)
 					throw new ArgumentNullException (nameof (value));
+
+				CheckDisposed ();
 
 				if (ReportType == value)
 					return;
@@ -140,10 +154,15 @@ namespace MimeKit {
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="visitor"/> is <c>null</c>.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MultipartReport"/> has been disposed.
+		/// </exception>
 		public override void Accept (MimeVisitor visitor)
 		{
-			if (visitor == null)
+			if (visitor is null)
 				throw new ArgumentNullException (nameof (visitor));
+
+			CheckDisposed ();
 
 			visitor.VisitMultipartReport (this);
 		}

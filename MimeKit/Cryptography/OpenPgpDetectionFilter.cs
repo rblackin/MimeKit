@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -27,8 +27,7 @@
 using MimeKit.Utils;
 using MimeKit.IO.Filters;
 
-namespace MimeKit.Cryptography
-{
+namespace MimeKit.Cryptography {
 	/// <summary>
 	/// A filter meant to aid in the detection of OpenPGP blocks.
 	/// </summary>
@@ -50,12 +49,12 @@ namespace MimeKit.Cryptography
 			EndPgpPrivateKeyBlock   = (1 << 8) | (1 << 7)
 		}
 
-		struct OpenPgpMarker
+		readonly struct OpenPgpMarker
 		{
-			public byte[] Marker;
-			public OpenPgpState InitialState;
-			public OpenPgpState DetectedState;
-			public bool IsEnd;
+			public readonly byte[] Marker;
+			public readonly OpenPgpState InitialState;
+			public readonly OpenPgpState DetectedState;
+			public readonly bool IsEnd;
 
 			public OpenPgpMarker (string marker, OpenPgpState initial, OpenPgpState detected, bool isEnd)
 			{
@@ -242,7 +241,8 @@ namespace MimeKit.Cryptography
 						bool isPartialMatch = false;
 
 						for (int i = 0; i < OpenPgpMarkers.Length; i++) {
-							if (OpenPgpMarkers[i].InitialState == state && IsPartialMatch (input, lineIndex, index, OpenPgpMarkers[i].Marker)) {
+							ref OpenPgpMarker marker = ref OpenPgpMarkers[i];
+							if (marker.InitialState == state && IsPartialMatch (input, lineIndex, index, marker.Marker)) {
 								isPartialMatch = true;
 								break;
 							}
@@ -262,8 +262,9 @@ namespace MimeKit.Cryptography
 					index++;
 
 					for (int i = 0; i < OpenPgpMarkers.Length; i++) {
-						if (OpenPgpMarkers[i].InitialState == state && IsMarker (input, lineIndex, endIndex, OpenPgpMarkers[i].Marker, out cr)) {
-							state = OpenPgpMarkers[i].DetectedState;
+						ref OpenPgpMarker marker = ref OpenPgpMarkers[i];
+						if (marker.InitialState == state && IsMarker (input, lineIndex, endIndex, marker.Marker, out cr)) {
+							state = marker.DetectedState;
 							SetPosition (lineIndex - startIndex, i, cr);
 							outputLength = index - lineIndex;
 							outputIndex = lineIndex;

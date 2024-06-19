@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,13 +24,9 @@
 // THE SOFTWARE.
 //
 
-using System;
-using System.IO;
 using System.Text;
 
 using MimeKit.Text;
-
-using NUnit.Framework;
 
 namespace UnitTests.Text {
 	[TestFixture]
@@ -41,22 +37,22 @@ namespace UnitTests.Text {
 		{
 			var latin1 = Encoding.GetEncoding ("iso-8859-1");
 			var utf16 = Encoding.Unicode;
-			var converter = new TextToText ();
-
-			converter.InputEncoding = latin1;
-			Assert.AreEqual (latin1, converter.InputEncoding, "InputEncoding");
+			var converter = new TextToText {
+				InputEncoding = latin1
+			};
+			Assert.That (converter.InputEncoding, Is.EqualTo (latin1), "InputEncoding");
 
 			converter.InputStreamBufferSize = 5000;
-			Assert.AreEqual (5000, converter.InputStreamBufferSize, "InputStreamBufferSize");
+			Assert.That (converter.InputStreamBufferSize, Is.EqualTo (5000), "InputStreamBufferSize");
 
 			converter.OutputEncoding = utf16;
-			Assert.AreEqual (utf16, converter.OutputEncoding, "OutputEncoding");
+			Assert.That (converter.OutputEncoding, Is.EqualTo (utf16), "OutputEncoding");
 
 			converter.OutputStreamBufferSize = 6000;
-			Assert.AreEqual (6000, converter.OutputStreamBufferSize, "OutputStreamBufferSize");
+			Assert.That (converter.OutputStreamBufferSize, Is.EqualTo (6000), "OutputStreamBufferSize");
 
 			converter.DetectEncodingFromByteOrderMark = true;
-			Assert.IsTrue (converter.DetectEncodingFromByteOrderMark, "DetectEncodingFromByteOrderMark");
+			Assert.That (converter.DetectEncodingFromByteOrderMark, Is.True, "DetectEncodingFromByteOrderMark");
 		}
 
 		[Test]
@@ -75,7 +71,7 @@ namespace UnitTests.Text {
 
 				var result = Encoding.ASCII.GetString (output.GetBuffer (), 0, (int) output.Length);
 
-				Assert.AreEqual (input, result);
+				Assert.That (result, Is.EqualTo (input));
 			}
 		}
 
@@ -95,7 +91,7 @@ namespace UnitTests.Text {
 
 				var result = Encoding.ASCII.GetString (output.GetBuffer (), 0, (int) output.Length);
 
-				Assert.AreEqual (input, result);
+				Assert.That (result, Is.EqualTo (input));
 			}
 		}
 
@@ -115,7 +111,7 @@ namespace UnitTests.Text {
 
 				var result = writer.ToString ();
 
-				Assert.AreEqual (input, result);
+				Assert.That (result, Is.EqualTo (input));
 			}
 		}
 	}

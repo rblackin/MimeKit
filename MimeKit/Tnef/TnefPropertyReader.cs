@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -27,7 +27,6 @@
 using System;
 using System.IO;
 using System.Text;
-using System.Buffers;
 
 namespace MimeKit.Tnef {
 	/// <summary>
@@ -39,33 +38,6 @@ namespace MimeKit.Tnef {
 	public class TnefPropertyReader
 	{
 		static readonly Encoding DefaultEncoding = Encoding.GetEncoding (1252);
-
-		// Note: these constants taken from Microsoft's Reference Source in DateTime.cs
-		const long TicksPerMillisecond = 10000;
-		const long TicksPerSecond = TicksPerMillisecond * 1000;
-		const long TicksPerMinute = TicksPerSecond * 60;
-		const long TicksPerHour = TicksPerMinute * 60;
-		const long TicksPerDay = TicksPerHour * 24;
-
-		const int MillisPerSecond = 1000;
-		const int MillisPerMinute = MillisPerSecond * 60;
-		const int MillisPerHour = MillisPerMinute * 60;
-		const int MillisPerDay = MillisPerHour * 24;
-
-		const int DaysPerYear = 365;
-		const int DaysPer4Years = DaysPerYear * 4 + 1;
-		const int DaysPer100Years = DaysPer4Years * 25 - 1;
-		const int DaysPer400Years = DaysPer100Years * 4 + 1;
-		const int DaysTo1899 = DaysPer400Years * 4 + DaysPer100Years * 3 - 367;
-
-		const int DaysTo10000 = DaysPer400Years * 25 - 366;
-
-		const long MaxMillis = (long) DaysTo10000 * MillisPerDay;
-
-		const long DoubleDateOffset = DaysTo1899 * TicksPerDay;
-		const long OADateMinAsTicks = (DaysPer100Years - DaysPerYear) * TicksPerDay;
-		const double OADateMinAsDouble = -657435.0;
-		const double OADateMaxAsDouble = 2958466.0;
 
 		TnefPropertyTag propertyTag;
 		readonly TnefReader reader;
@@ -86,7 +58,7 @@ namespace MimeKit.Tnef {
 
 #if false
 		/// <summary>
-		/// Gets a value indicating whether the current property is a computed property.
+		/// Get a value indicating whether the current property is a computed property.
 		/// </summary>
 		/// <remarks>
 		/// Gets a value indicating whether the current property is a computed property.
@@ -98,7 +70,7 @@ namespace MimeKit.Tnef {
 #endif
 
 		/// <summary>
-		/// Gets a value indicating whether the current property is an embedded TNEF message.
+		/// Get a value indicating whether the current property is an embedded TNEF message.
 		/// </summary>
 		/// <remarks>
 		/// Gets a value indicating whether the current property is an embedded TNEF message.
@@ -110,7 +82,7 @@ namespace MimeKit.Tnef {
 
 #if false
 		/// <summary>
-		/// Gets a value indicating whether the current property has a large value.
+		/// Get a value indicating whether the current property has a large value.
 		/// </summary>
 		/// <remarks>
 		/// Gets a value indicating whether the current property has a large value.
@@ -122,7 +94,7 @@ namespace MimeKit.Tnef {
 #endif
 
 		/// <summary>
-		/// Gets a value indicating whether or not the current property has multiple values.
+		/// Get a value indicating whether or not the current property has multiple values.
 		/// </summary>
 		/// <remarks>
 		/// Gets a value indicating whether or not the current property has multiple values.
@@ -133,7 +105,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets a value indicating whether or not the current property is a named property.
+		/// Get a value indicating whether or not the current property is a named property.
 		/// </summary>
 		/// <remarks>
 		/// Gets a value indicating whether or not the current property is a named property.
@@ -144,7 +116,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets a value indicating whether the current property contains object values.
+		/// Get a value indicating whether the current property contains object values.
 		/// </summary>
 		/// <remarks>
 		/// Gets a value indicating whether the current property contains object values.
@@ -156,7 +128,7 @@ namespace MimeKit.Tnef {
 
 #if false
 		/// <summary>
-		/// Gets the object iid.
+		/// Get the object iid.
 		/// </summary>
 		/// <remarks>
 		/// Gets the object iid.
@@ -168,7 +140,7 @@ namespace MimeKit.Tnef {
 #endif
 
 		/// <summary>
-		/// Gets the number of properties available.
+		/// Get the number of properties available.
 		/// </summary>
 		/// <remarks>
 		/// Gets the number of properties available.
@@ -179,7 +151,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the property name identifier.
+		/// Get the property name identifier.
 		/// </summary>
 		/// <remarks>
 		/// Gets the property name identifier.
@@ -190,7 +162,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the property tag.
+		/// Get the property tag.
 		/// </summary>
 		/// <remarks>
 		/// Gets the property tag.
@@ -201,7 +173,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the length of the raw value.
+		/// Get the length of the raw value.
 		/// </summary>
 		/// <remarks>
 		/// Gets the length of the raw value.
@@ -212,7 +184,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the raw value stream offset.
+		/// Get the raw value stream offset.
 		/// </summary>
 		/// <remarks>
 		/// Gets the raw value stream offset.
@@ -223,7 +195,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the number of table rows available.
+		/// Get the number of table rows available.
 		/// </summary>
 		/// <remarks>
 		/// Gets the number of table rows available.
@@ -234,7 +206,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the number of values available.
+		/// Get the number of values available.
 		/// </summary>
 		/// <remarks>
 		/// Gets the number of values available.
@@ -245,7 +217,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the type of the value.
+		/// Get the type of the value.
 		/// </summary>
 		/// <remarks>
 		/// Gets the type of the value.
@@ -277,7 +249,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Gets the embedded TNEF message reader.
+		/// Get the embedded TNEF message reader.
 		/// </summary>
 		/// <remarks>
 		/// Gets the embedded TNEF message reader.
@@ -294,19 +266,15 @@ namespace MimeKit.Tnef {
 				throw new InvalidOperationException ();
 
 			var stream = GetRawValueReadStream ();
-			var guid = ArrayPool<byte>.Shared.Rent (16);
+			var guid = new byte[16];
 
-			try {
-				stream.Read (guid, 0, 16);
-			} finally {
-				ArrayPool<byte>.Shared.Return (guid);
-			}
+			stream.Read (guid, 0, 16);
 
 			return new TnefReader (stream, reader.MessageCodepage, reader.ComplianceMode);
 		}
 
 		/// <summary>
-		/// Gets the raw value of the attribute or property as a stream.
+		/// Get the raw value of the attribute or property as a stream.
 		/// </summary>
 		/// <remarks>
 		/// Gets the raw value of the attribute or property as a stream.
@@ -405,33 +373,11 @@ namespace MimeKit.Tnef {
 			return reader.ReadDouble ();
 		}
 
-		// Note: this method taken from Microsoft's Reference Source in DateTime.cs
-		static long DoubleDateToTicks (double value)
-		{
-			// The check done this way will take care of NaN
-			if (!(value < OADateMaxAsDouble) || !(value > OADateMinAsDouble))
-				throw new ArgumentException ("Invalid OLE Automation Date.", nameof (value));
-
-			long millis = (long) (value * MillisPerDay + (value >= 0 ? 0.5 : -0.5));
-
-			if (millis < 0)
-				millis -= (millis % MillisPerDay) * 2;
-
-			millis += DoubleDateOffset / TicksPerMillisecond;
-
-			if (millis < 0 || millis >= MaxMillis)
-				throw new ArgumentException ("Invalid OLE Automation Date.", nameof (value));
-
-			return millis * TicksPerMillisecond;
-		}
-
 		DateTime ReadAppTime ()
 		{
 			var appTime = ReadDouble ();
 
-			// Note: equivalent to DateTime.FromOADate(). Unfortunately, FromOADate() is
-			// not available in some PCL profiles.
-			return new DateTime (DoubleDateToTicks (appTime), DateTimeKind.Unspecified);
+			return DateTime.FromOADate (appTime);
 		}
 
 		DateTime ReadSysTime ()
@@ -538,9 +484,9 @@ namespace MimeKit.Tnef {
 			int hour = ReadInt16 ();
 			int minute = ReadInt16 ();
 			int second = ReadInt16 ();
-			#pragma warning disable 219
+			#pragma warning disable IDE0059
 			int dow = ReadInt16 ();
-			#pragma warning restore 219
+			#pragma warning restore IDE0059
 
 			try {
 				return new DateTime (year, month, day, hour, minute, second);
@@ -570,7 +516,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Advances to the next MAPI property.
+		/// Advance to the next MAPI property.
 		/// </summary>
 		/// <remarks>
 		/// Advances to the next MAPI property.
@@ -618,7 +564,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Advances to the next table row of properties.
+		/// Advance to the next table row of properties.
 		/// </summary>
 		/// <remarks>
 		/// Advances to the next table row of properties.
@@ -648,7 +594,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Advances to the next value in the TNEF stream.
+		/// Advance to the next value in the TNEF stream.
 		/// </summary>
 		/// <remarks>
 		/// Advances to the next value in the TNEF stream.
@@ -681,7 +627,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Reads the raw attribute or property value as a sequence of bytes.
+		/// Read the raw attribute or property value as a sequence of bytes.
 		/// </summary>
 		/// <remarks>
 		/// Reads the raw attribute or property value as a sequence of bytes.
@@ -705,7 +651,7 @@ namespace MimeKit.Tnef {
 		/// </exception>
 		public int ReadRawValue (byte[] buffer, int offset, int count)
 		{
-			if (buffer == null)
+			if (buffer is null)
 				throw new ArgumentNullException (nameof (buffer));
 
 			if (offset < 0 || offset >= buffer.Length)
@@ -733,7 +679,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Reads the raw attribute or property value as a sequence of unicode characters.
+		/// Read the raw attribute or property value as a sequence of unicode characters.
 		/// </summary>
 		/// <remarks>
 		/// Reads the raw attribute or property value as a sequence of unicode characters.
@@ -758,7 +704,7 @@ namespace MimeKit.Tnef {
 		/// </exception>
 		public int ReadTextValue (char[] buffer, int offset, int count)
 		{
-			if (buffer == null)
+			if (buffer is null)
 				throw new ArgumentNullException (nameof (buffer));
 
 			if (offset < 0 || offset >= buffer.Length)
@@ -767,20 +713,20 @@ namespace MimeKit.Tnef {
 			if (count < 0 || count > (buffer.Length - offset))
 				throw new ArgumentOutOfRangeException (nameof (count));
 
-			if (reader.StreamOffset == RawValueStreamOffset && decoder == null)
+			if (reader.StreamOffset == RawValueStreamOffset && decoder is null)
 				throw new InvalidOperationException ();
 
 			if (propertyCount > 0 && reader.StreamOffset == RawValueStreamOffset) {
 				switch (propertyTag.ValueTnefType) {
 				case TnefPropertyType.Unicode:
 					ReadInt32 ();
-					decoder = (Decoder) Encoding.Unicode.GetDecoder ();
+					decoder = Encoding.Unicode.GetDecoder ();
 					break;
 				case TnefPropertyType.String8:
 				case TnefPropertyType.Binary:
 				case TnefPropertyType.Object:
 					ReadInt32 ();
-					decoder = (Decoder) GetMessageEncoding ().GetDecoder ();
+					decoder = GetMessageEncoding ().GetDecoder ();
 					break;
 				}
 			}
@@ -792,17 +738,13 @@ namespace MimeKit.Tnef {
 			if (n <= 0)
 				return 0;
 
-			var bytes = ArrayPool<byte>.Shared.Rent (n);
+			var bytes = new byte[n];
 
-			try {
-				n = reader.ReadAttributeRawValue (bytes, 0, n);
+			n = reader.ReadAttributeRawValue (bytes, 0, n);
 
-				var flush = reader.StreamOffset >= valueEndOffset;
+			var flush = reader.StreamOffset >= valueEndOffset;
 
-				return decoder.GetChars (bytes, 0, n, buffer, offset, flush);
-			} finally {
-				ArrayPool<byte>.Shared.Return (bytes);
-			}
+			return decoder.GetChars (bytes, 0, n, buffer, offset, flush);
 		}
 
 		bool TryGetPropertyValueLength (out int length)
@@ -947,7 +889,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Reads the value.
+		/// Read the value.
 		/// </summary>
 		/// <remarks>
 		/// Reads an attribute or property value as its native type.
@@ -987,7 +929,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Reads the value as a boolean.
+		/// Read the value as a boolean.
 		/// </summary>
 		/// <remarks>
 		/// Reads any integer-based attribute or property value as a boolean.
@@ -1042,7 +984,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Reads the value as a byte array.
+		/// Read the value as a byte array.
 		/// </summary>
 		/// <remarks>
 		/// Reads any string, binary blob, Class ID, or Object attribute or property value as a byte array.
@@ -1094,7 +1036,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Reads the value as a date and time.
+		/// Read the value as a date and time.
 		/// </summary>
 		/// <remarks>
 		/// Reads any date and time attribute or property value as a <see cref="DateTime"/>.
@@ -1136,7 +1078,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Reads the value as a double.
+		/// Read the value as a double.
 		/// </summary>
 		/// <remarks>
 		/// Reads any numeric attribute or property value as a double.
@@ -1197,7 +1139,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Reads the value as a float.
+		/// Read the value as a float.
 		/// </summary>
 		/// <remarks>
 		/// Reads any numeric attribute or property value as a float.
@@ -1258,7 +1200,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Reads the value as a GUID.
+		/// Read the value as a GUID.
 		/// </summary>
 		/// <remarks>
 		/// Reads any Class ID value as a GUID.
@@ -1295,7 +1237,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Reads the value as a 16-bit integer.
+		/// Read the value as a 16-bit integer.
 		/// </summary>
 		/// <remarks>
 		/// Reads any integer-based attribute or property value as a 16-bit integer.
@@ -1356,7 +1298,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Reads the value as a 32-bit integer.
+		/// Read the value as a 32-bit integer.
 		/// </summary>
 		/// <remarks>
 		/// Reads any integer-based attribute or property value as a 32-bit integer.
@@ -1417,7 +1359,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Reads the value as a 64-bit integer.
+		/// Read the value as a 64-bit integer.
 		/// </summary>
 		/// <remarks>
 		/// Reads any integer-based attribute or property value as a 64-bit integer.
@@ -1478,7 +1420,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Reads the value as a string.
+		/// Read the value as a string.
 		/// </summary>
 		/// <remarks>
 		/// Reads any string or binary blob values as a string.
@@ -1519,7 +1461,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Reads the value as a Uri.
+		/// Read the value as a Uri.
 		/// </summary>
 		/// <remarks>
 		/// Reads any string or binary blob values as a Uri.
@@ -1558,7 +1500,7 @@ namespace MimeKit.Tnef {
 		}
 
 		/// <summary>
-		/// Determines whether the specified <see cref="System.Object"/> is equal to the current <see cref="TnefPropertyReader"/>.
+		/// Determine whether the specified <see cref="System.Object"/> is equal to the current <see cref="TnefPropertyReader"/>.
 		/// </summary>
 		/// <remarks>
 		/// Determines whether the specified <see cref="System.Object"/> is equal to the current <see cref="TnefPropertyReader"/>.
@@ -1568,9 +1510,7 @@ namespace MimeKit.Tnef {
 		/// <see cref="TnefPropertyReader"/>; otherwise, <c>false</c>.</returns>
 		public override bool Equals (object obj)
 		{
-			var prop = obj as TnefPropertyReader;
-
-			return prop != null && prop.reader == reader;
+			return obj is TnefPropertyReader prop && prop.reader == reader;
 		}
 
 		void LoadPropertyCount ()

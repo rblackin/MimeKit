@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,9 +24,7 @@
 // THE SOFTWARE.
 //
 
-using System;
-
-using NUnit.Framework;
+using System.Collections;
 
 using MimeKit;
 
@@ -43,7 +41,7 @@ namespace UnitTests {
 			Assert.Throws<ArgumentNullException> (() => list.AddRange (null));
 			Assert.Throws<ArgumentNullException> (() => list.Contains (null));
 			Assert.Throws<ArgumentNullException> (() => list.CopyTo (null, 0));
-			Assert.Throws<ArgumentOutOfRangeException> (() => list.CopyTo (new string[0], -1));
+			Assert.Throws<ArgumentOutOfRangeException> (() => list.CopyTo (Array.Empty<string> (), -1));
 			Assert.Throws<ArgumentNullException> (() => list.IndexOf (null));
 			Assert.Throws<ArgumentOutOfRangeException> (() => list.Insert (-1, "item"));
 			Assert.Throws<ArgumentNullException> (() => list.Insert (0, null));
@@ -57,56 +55,73 @@ namespace UnitTests {
 		{
 			var list = new MessageIdList ();
 
-			Assert.IsFalse (list.IsReadOnly);
-			Assert.AreEqual (0, list.Count, "Initial count");
+			Assert.That (list.IsReadOnly, Is.False);
+			Assert.That (list.Count, Is.EqualTo (0), "Initial count");
 
 			list.Add ("id2@localhost");
 
-			Assert.AreEqual (1, list.Count);
-			Assert.AreEqual ("id2@localhost", list[0]);
+			Assert.That (list.Count, Is.EqualTo (1));
+			Assert.That (list[0], Is.EqualTo ("id2@localhost"));
 
 			list.Insert (0, "id0@localhost");
 			list.Insert (1, "id1@localhost");
 
-			Assert.AreEqual (3, list.Count);
-			Assert.AreEqual ("id0@localhost", list[0]);
-			Assert.AreEqual ("id1@localhost", list[1]);
-			Assert.AreEqual ("id2@localhost", list[2]);
+			Assert.That (list.Count, Is.EqualTo (3));
+			Assert.That (list[0], Is.EqualTo ("id0@localhost"));
+			Assert.That (list[1], Is.EqualTo ("id1@localhost"));
+			Assert.That (list[2], Is.EqualTo ("id2@localhost"));
 
 			var clone = list.Clone ();
 
-			Assert.AreEqual (3, clone.Count);
-			Assert.AreEqual ("id0@localhost", clone[0]);
-			Assert.AreEqual ("id1@localhost", clone[1]);
-			Assert.AreEqual ("id2@localhost", clone[2]);
+			Assert.That (clone.Count, Is.EqualTo (3));
+			Assert.That (clone[0], Is.EqualTo ("id0@localhost"));
+			Assert.That (clone[1], Is.EqualTo ("id1@localhost"));
+			Assert.That (clone[2], Is.EqualTo ("id2@localhost"));
 
-			Assert.IsTrue (list.Contains ("id1@localhost"), "Contains");
-			Assert.AreEqual (1, list.IndexOf ("id1@localhost"), "IndexOf");
+			Assert.That (list.Contains ("id1@localhost"), Is.True, "Contains");
+			Assert.That (list.IndexOf ("id1@localhost"), Is.EqualTo (1), "IndexOf");
 
 			var array = new string[list.Count];
 			list.CopyTo (array, 0);
 			list.Clear ();
 
-			Assert.AreEqual (0, list.Count);
+			Assert.That (list.Count, Is.EqualTo (0));
 
 			list.AddRange (array);
 
-			Assert.AreEqual (array.Length, list.Count);
+			Assert.That (list.Count, Is.EqualTo (array.Length));
 
-			Assert.IsTrue (list.Remove ("id2@localhost"));
-			Assert.AreEqual (2, list.Count);
-			Assert.AreEqual ("id0@localhost", list[0]);
-			Assert.AreEqual ("id1@localhost", list[1]);
+			Assert.That (list.Remove ("id2@localhost"), Is.True);
+			Assert.That (list.Count, Is.EqualTo (2));
+			Assert.That (list[0], Is.EqualTo ("id0@localhost"));
+			Assert.That (list[1], Is.EqualTo ("id1@localhost"));
 
 			list.RemoveAt (0);
 
-			Assert.AreEqual (1, list.Count);
-			Assert.AreEqual ("id1@localhost", list[0]);
+			Assert.That (list.Count, Is.EqualTo (1));
+			Assert.That (list[0], Is.EqualTo ("id1@localhost"));
 
 			list[0] = "id@localhost";
 
-			Assert.AreEqual (1, list.Count);
-			Assert.AreEqual ("id@localhost", list[0]);
+			Assert.That (list.Count, Is.EqualTo (1));
+			Assert.That (list[0], Is.EqualTo ("id@localhost"));
+		}
+
+		[Test]
+		public void TestGetEnumerator ()
+		{
+			var list = new MessageIdList ();
+
+			for (int i = 0; i < 5; i++)
+				list.Add ($"{i}@example.com");
+
+			int index = 0;
+			foreach (string msgid in list)
+				Assert.That (msgid, Is.EqualTo ($"{index++}@example.com"));
+
+			index = 0;
+			foreach (string msgid in (IEnumerable) list)
+				Assert.That (msgid, Is.EqualTo ($"{index++}@example.com"));
 		}
 	}
 }

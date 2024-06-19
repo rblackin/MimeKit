@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -27,7 +27,6 @@
 using System;
 using System.Text;
 using System.Globalization;
-using System.Collections.Generic;
 
 using MimeKit.Utils;
 
@@ -36,7 +35,7 @@ namespace MimeKit {
 	/// An abstract internet address, as specified by rfc0822.
 	/// </summary>
 	/// <remarks>
-	/// <para>A <see cref="InternetAddress"/> can be any type of address defined by the
+	/// <para>An <see cref="InternetAddress"/> can be any type of address defined by the
 	/// original Internet Message specification.</para>
 	/// <para>There are effectively two (2) types of addresses: mailboxes and groups.</para>
 	/// <para>Mailbox addresses are what are most commonly known as email addresses and are
@@ -65,7 +64,7 @@ namespace MimeKit {
 		/// </exception>
 		protected InternetAddress (Encoding encoding, string name)
 		{
-			if (encoding == null)
+			if (encoding is null)
 				throw new ArgumentNullException (nameof (encoding));
 
 			Encoding = encoding;
@@ -86,7 +85,7 @@ namespace MimeKit {
 		public Encoding Encoding {
 			get { return encoding; }
 			set {
-				if (value == null)
+				if (value is null)
 					throw new ArgumentNullException (nameof (value));
 
 				if (value == encoding)
@@ -101,8 +100,12 @@ namespace MimeKit {
 		/// Get or set the display name of the address.
 		/// </summary>
 		/// <remarks>
-		/// A name is optional and is typically set to the name of the person
-		/// or group that own the internet address.
+		/// <para>A name is optional and is typically set to the name of the person
+		/// or group that own the internet address.</para>
+		/// <para>For example, the <see cref="Name"/> property of the following <see cref="MailboxAddress"/> would be <c>"John Smith"</c>.</para>
+		/// <para><c>John Smith &lt;j.smith@example.com&gt;</c></para>
+		/// <para>Likewise, the <see cref="Name"/> property of the following <see cref="GroupAddress"/> would be <c>"undisclosed-recipients"</c>.</para>
+		/// <para><c>undisclosed-recipients: Alice &lt;alice@wonderland.com&gt;, Bob &lt;bob@the-builder.com&gt;;</c></para>
 		/// </remarks>
 		/// <value>The name of the address.</value>
 		public string Name {
@@ -142,7 +145,7 @@ namespace MimeKit {
 		{
 			int rv;
 
-			if (other == null)
+			if (other is null)
 				throw new ArgumentNullException (nameof (other));
 
 			if ((rv = string.Compare (Name, other.Name, StringComparison.OrdinalIgnoreCase)) != 0)
@@ -164,20 +167,25 @@ namespace MimeKit {
 				}
 
 				if (rv == 0) {
-					string otherUser = otherAt != -1 ? otherAddress.Substring (0, otherAt) : otherAddress;
-					string user = at != -1 ? address.Substring (0, at) : address;
+					int otherLength = otherAt == -1 ? otherAddress.Length : otherAt;
+					int length = at == -1 ? address.Length : at;
+					int n = Math.Min (length, otherLength);
 
-					rv = string.Compare (user, otherUser, StringComparison.OrdinalIgnoreCase);
+					if ((rv = string.Compare (address, 0, otherAddress, 0, n, StringComparison.OrdinalIgnoreCase)) == 0) {
+						// The local-part's of the addresses are identical for the first `n` characters. The address
+						// with the longer local-part should sort as > the address with the shorter local-part.
+						rv = length - otherLength;
+					}
 				}
 
 				return rv;
 			}
 
 			// sort mailbox addresses before group addresses
-			if (mailbox != null && otherMailbox == null)
+			if (mailbox != null && otherMailbox is null)
 				return -1;
 
-			if (mailbox == null && otherMailbox != null)
+			if (mailbox is null && otherMailbox != null)
 				return 1;
 
 			return 0;
@@ -188,7 +196,7 @@ namespace MimeKit {
 		#region IEquatable implementation
 
 		/// <summary>
-		/// Determines whether the specified <see cref="InternetAddress"/> is equal to the current <see cref="InternetAddress"/>.
+		/// Determine whether the specified <see cref="InternetAddress"/> is equal to the current <see cref="InternetAddress"/>.
 		/// </summary>
 		/// <remarks>
 		/// Compares two internet addresses to determine if they are identical or not.
@@ -293,41 +301,67 @@ namespace MimeKit {
 		/// </remarks>
 		protected virtual void OnChanged ()
 		{
-			if (Changed != null)
-				Changed (this, EventArgs.Empty);
+			Changed?.Invoke (this, EventArgs.Empty);
 		}
 
-		internal static bool TryParseLocalPart (byte[] text, ref int index, int endIndex, bool skipTrailingCfws, bool throwOnError, out string localpart)
+		internal static bool TryParseLocalPart (byte[] text, ref int index, int endIndex, RfcComplianceMode compliance, bool skipTrailingCfws, bool throwOnError, out string localpart)
 		{
-			var token = new StringBuilder ();
+			using var token = new ValueStringBuilder (128);
 			int startIndex = index;
 
 			localpart = null;
 
 			do {
-				if (!text[index].IsAtom () && text[index] != '"') {
+				bool escapedAt = false;
+				int start = index;
+
+				if (text[index] == (byte) '"') {
+					if (!ParseUtils.SkipQuoted (text, ref index, endIndex, throwOnError))
+						return false;
+				} else if (text[index].IsAtom ()) {
+					if (!ParseUtils.SkipAtom (text, ref index, endIndex))
+						return false;
+
+					if (compliance == RfcComplianceMode.Looser) {
+						// Allow local-parts that include escaped '@' symbols.
+						// See https://github.com/jstedfast/MimeKit/issues/1043 for details.
+						while (index + 1 < endIndex && text[index] == (byte) '\\' && text[index + 1] == (byte) '@') {
+							// track that we've encountered an escaped @ symbol
+							escapedAt = true;
+
+							// skip over the '\\' and '@' characters
+							index += 2;
+
+							if (!ParseUtils.SkipAtom (text, ref index, endIndex))
+								break;
+						}
+					}
+				} else {
 					if (throwOnError)
 						throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Invalid local-part at offset {0}", startIndex), startIndex, index);
 
 					return false;
 				}
 
-				int start = index;
-				if (!ParseUtils.SkipWord (text, ref index, endIndex, throwOnError))
-					return false;
+				string word;
 
 				try {
-					token.Append (CharsetUtils.UTF8.GetString (text, start, index - start));
-				} catch (DecoderFallbackException) {
-					try {
-						token.Append (CharsetUtils.Latin1.GetString (text, start, index - start));
-					} catch (DecoderFallbackException ex) {
+					word = CharsetUtils.UTF8.GetString (text, start, index - start);
+				} catch (DecoderFallbackException ex) {
+					if (compliance == RfcComplianceMode.Strict) {
 						if (throwOnError)
 							throw new ParseException ("Internationalized local-part tokens may only contain UTF-8 characters.", start, start, ex);
 
 						return false;
 					}
+
+					word = CharsetUtils.Latin1.GetString (text, start, index - start);
 				}
+
+				if (escapedAt)
+					word = word.Replace ("\\@", "%40");
+
+				token.Append (word);
 
 				int cfws = index;
 				if (!ParseUtils.SkipCommentsAndWhiteSpace (text, ref index, endIndex, throwOnError))
@@ -339,39 +373,40 @@ namespace MimeKit {
 					break;
 				}
 
-				token.Append ('.');
-				index++;
+				do {
+					token.Append ('.');
+					index++;
 
-				if (!ParseUtils.SkipCommentsAndWhiteSpace (text, ref index, endIndex, throwOnError))
-					return false;
+					if (!ParseUtils.SkipCommentsAndWhiteSpace (text, ref index, endIndex, throwOnError))
+						return false;
 
-				if (index >= endIndex) {
-					if (throwOnError)
-						throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Incomplete local-part at offset {0}", startIndex), startIndex, index);
+					if (index >= endIndex) {
+						if (throwOnError)
+							throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Incomplete local-part at offset {0}", startIndex), startIndex, index);
 
-					return false;
-				}
+						return false;
+					}
+				} while (compliance == RfcComplianceMode.Looser && text[index] == (byte) '.');
+
+				if (compliance == RfcComplianceMode.Looser && (index >= endIndex || text[index] == (byte) '@'))
+					break;
 			} while (true);
 
 			localpart = token.ToString ();
 
-			if (ParseUtils.IsIdnEncoded (localpart))
-				localpart = ParseUtils.IdnDecode (localpart);
-
 			return true;
 		}
 
-		static readonly byte[] CommaGreaterThanOrSemiColon = { (byte) ',', (byte) '>', (byte) ';' };
+		static ReadOnlySpan<byte> CommaGreaterThanOrSemiColon => ",>;"u8;
 
-		internal static bool TryParseAddrspec (byte[] text, ref int index, int endIndex, byte[] sentinels, bool throwOnError, out string addrspec, out int at)
+		internal static bool TryParseAddrspec (byte[] text, ref int index, int endIndex, ReadOnlySpan<byte> sentinels, RfcComplianceMode compliance, bool throwOnError, out string addrspec, out int at)
 		{
 			int startIndex = index;
-			string localpart;
 
 			addrspec = null;
 			at = -1;
 
-			if (!TryParseLocalPart (text, ref index, endIndex, true, throwOnError, out localpart))
+			if (!TryParseLocalPart (text, ref index, endIndex, compliance, true, throwOnError, out var localpart))
 				return false;
 
 			if (index >= endIndex || ParseUtils.IsSentinel (text[index], sentinels)) {
@@ -404,12 +439,11 @@ namespace MimeKit {
 				return false;
 			}
 
-			string domain;
-			if (!ParseUtils.TryParseDomain (text, ref index, endIndex, sentinels, throwOnError, out domain))
+			if (!ParseUtils.TryParseDomain (text, ref index, endIndex, sentinels, throwOnError, out var domain))
 				return false;
 
 			if (ParseUtils.IsIdnEncoded (domain))
-				domain = ParseUtils.IdnDecode (domain);
+				domain = MailboxAddress.IdnMapping.Decode (domain);
 
 			addrspec = localpart + "@" + domain;
 			at = localpart.Length;
@@ -419,14 +453,8 @@ namespace MimeKit {
 
 		internal static bool TryParseMailbox (ParserOptions options, byte[] text, int startIndex, ref int index, int endIndex, string name, int codepage, bool throwOnError, out InternetAddress address)
 		{
+			var encoding = CharsetUtils.GetEncodingOrDefault (codepage, Encoding.UTF8);
 			DomainList route = null;
-			Encoding encoding;
-
-			try {
-				encoding = Encoding.GetEncoding (codepage);
-			} catch {
-				encoding = Encoding.UTF8;
-			}
 
 			address = null;
 
@@ -492,10 +520,7 @@ namespace MimeKit {
 			// in case the mailbox is within a group address.
 			//
 			// Example: <third@example.net, fourth@example.net>
-			string addrspec;
-			int at;
-
-			if (!TryParseAddrspec (text, ref index, endIndex, CommaGreaterThanOrSemiColon, throwOnError, out addrspec, out at))
+			if (!TryParseAddrspec (text, ref index, endIndex, CommaGreaterThanOrSemiColon, options.AddressParserComplianceMode, throwOnError, out string addrspec, out int at))
 				return false;
 
 			if (!ParseUtils.SkipCommentsAndWhiteSpace (text, ref index, endIndex, throwOnError))
@@ -535,18 +560,10 @@ namespace MimeKit {
 			return true;
 		}
 
-		static bool TryParseGroup (ParserOptions options, byte[] text, int startIndex, ref int index, int endIndex, int groupDepth, string name, int codepage, bool throwOnError, out InternetAddress address)
+		static bool TryParseGroup (AddressParserFlags flags, ParserOptions options, byte[] text, int startIndex, ref int index, int endIndex, int groupDepth, string name, int codepage, out InternetAddress address)
 		{
-			List<InternetAddress> members;
-			Encoding encoding;
-
-			try {
-				encoding = Encoding.GetEncoding (codepage);
-			} catch {
-				encoding = Encoding.UTF8;
-			}
-
-			address = null;
+			var encoding = CharsetUtils.GetEncodingOrDefault (codepage, Encoding.UTF8);
+			bool throwOnError = (flags & AddressParserFlags.ThrowOnError) != 0;
 
 			// skip over the ':'
 			index++;
@@ -554,7 +571,7 @@ namespace MimeKit {
 			while (index < endIndex && (text[index] == ':' || text[index].IsBlank ()))
 				index++;
 
-			if (InternetAddressList.TryParse (options, text, ref index, endIndex, true, groupDepth, throwOnError, out members))
+			if (InternetAddressList.TryParse (flags | AddressParserFlags.AllowMailboxAddress, options, text, ref index, endIndex, true, groupDepth, out var members))
 				address = new GroupAddress (encoding, name, members);
 			else
 				address = new GroupAddress (encoding, name);
@@ -572,19 +589,8 @@ namespace MimeKit {
 			return true;
 		}
 
-		[Flags]
-		internal enum AddressParserFlags {
-			AllowMailboxAddress = 1 << 0,
-			AllowGroupAddress   = 1 << 1,
-			ThrowOnError        = 1 << 2,
-
-			TryParse            = AllowMailboxAddress | AllowGroupAddress,
-			Parse               = TryParse | ThrowOnError
-		}
-
-		internal static bool TryParse (ParserOptions options, byte[] text, ref int index, int endIndex, int groupDepth, AddressParserFlags flags, out InternetAddress address)
+		internal static bool TryParse (AddressParserFlags flags, ParserOptions options, byte[] text, ref int index, int endIndex, int groupDepth, out InternetAddress address)
 		{
-			bool strict = options.AddressParserComplianceMode == RfcComplianceMode.Strict;
 			bool throwOnError = (flags & AddressParserFlags.ThrowOnError) != 0;
 			int minWordCount = options.AllowUnquotedCommasInAddresses ? 0 : 1;
 
@@ -607,7 +613,7 @@ namespace MimeKit {
 			int words = 0;
 
 			while (index < endIndex) {
-				if (strict) {
+				if (options.AddressParserComplianceMode == RfcComplianceMode.Strict) {
 					if (!ParseUtils.SkipWord (text, ref index, endIndex, throwOnError))
 						break;
 				} else if (text[index] == (byte) '"') {
@@ -671,7 +677,7 @@ namespace MimeKit {
 			if (index >= endIndex || text[index] == (byte) ',' || text[index] == (byte) '>' || text[index] == ';') {
 				// we've completely gobbled up an addr-spec w/o a domain
 				byte sentinel = index < endIndex ? text[index] : (byte) ',';
-				string name, addrspec;
+				string name;
 
 				if ((flags & AddressParserFlags.AllowMailboxAddress) == 0) {
 					if (throwOnError)
@@ -690,7 +696,7 @@ namespace MimeKit {
 				// rewind back to the beginning of the local-part
 				index = startIndex;
 
-				if (!TryParseLocalPart (text, ref index, endIndex, false, throwOnError, out addrspec))
+				if (!TryParseLocalPart (text, ref index, endIndex, options.AddressParserComplianceMode, false, throwOnError, out var addrspec))
 					return false;
 
 				ParseUtils.SkipWhiteSpace (text, ref index, endIndex);
@@ -709,7 +715,7 @@ namespace MimeKit {
 				}
 
 				if (index < endIndex && text[index] == (byte) '>') {
-					if (strict) {
+					if (options.AddressParserComplianceMode == RfcComplianceMode.Strict) {
 						if (throwOnError)
 							throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Unexpected '>' token at offset {0}", index), startIndex, index);
 
@@ -721,7 +727,7 @@ namespace MimeKit {
 
 				if (index < endIndex && text[index] != sentinel) {
 					if (throwOnError)
-						throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Unexpected token at offset {0}", index), startIndex, index);
+						throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Unexpected '{0}' token at offset {1}", (char) text[index], index), startIndex, index);
 
 					return false;
 				}
@@ -765,7 +771,7 @@ namespace MimeKit {
 				if (codepage == -1)
 					codepage = 65001;
 
-				return TryParseGroup (options, text, startIndex, ref index, endIndex, groupDepth + 1, MimeUtils.Unquote (name), codepage, throwOnError, out address);
+				return TryParseGroup (flags, options, text, startIndex, ref index, endIndex, groupDepth + 1, MimeUtils.Unquote (name, true), codepage, out address);
 			}
 
 			if ((flags & AddressParserFlags.AllowMailboxAddress) == 0) {
@@ -777,13 +783,12 @@ namespace MimeKit {
 
 			if (text[index] == (byte) '@') {
 				// we're either in the middle of an addr-spec token or we completely gobbled up an addr-spec w/o a domain
-				string name, addrspec;
-				int at;
+				string name;
 
 				// rewind back to the beginning of the local-part
 				index = startIndex;
 
-				if (!TryParseAddrspec (text, ref index, endIndex, CommaGreaterThanOrSemiColon, throwOnError, out addrspec, out at))
+				if (!TryParseAddrspec (text, ref index, endIndex, CommaGreaterThanOrSemiColon, options.AddressParserComplianceMode, throwOnError, out var addrspec, out int at))
 					return false;
 
 				ParseUtils.SkipWhiteSpace (text, ref index, endIndex);
@@ -815,7 +820,7 @@ namespace MimeKit {
 
 				if (text[index] == (byte) '<') {
 					// We have an address like "user@example.com <user@example.com>"; i.e. the name is an unquoted string with an '@'.
-					if (strict) {
+					if (options.AddressParserComplianceMode == RfcComplianceMode.Strict) {
 						if (throwOnError)
 							throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Unexpected '<' token at offset {0}", index), startIndex, index);
 
@@ -833,7 +838,7 @@ namespace MimeKit {
 					// Note: since there was no '<', there should not be a '>'... but we handle it anyway in order to
 					// deal with the second Unbalanced Angle Brackets example in section 7.1.3: second@example.org>
 					if (text[index] == (byte) '>') {
-						if (strict) {
+						if (options.AddressParserComplianceMode == RfcComplianceMode.Strict) {
 							if (throwOnError)
 								throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Unexpected '>' token at offset {0}", index), startIndex, index);
 
@@ -861,7 +866,9 @@ namespace MimeKit {
 				}
 
 				if (length > 0) {
-					name = Rfc2047.DecodePhrase (options, text, nameIndex, length, out codepage);
+					var unquoted = MimeUtils.Unquote (text, nameIndex, length, true);
+
+					name = Rfc2047.DecodePhrase (options, unquoted, 0, unquoted.Length, out codepage);
 				} else {
 					name = string.Empty;
 				}
@@ -869,7 +876,7 @@ namespace MimeKit {
 				if (codepage == -1)
 					codepage = 65001;
 
-				return TryParseMailbox (options, text, startIndex, ref index, endIndex, MimeUtils.Unquote (name), codepage, throwOnError, out address);
+				return TryParseMailbox (options, text, startIndex, ref index, endIndex, name, codepage, throwOnError, out address);
 			}
 
 			if (throwOnError)
@@ -907,7 +914,7 @@ namespace MimeKit {
 			int endIndex = startIndex + length;
 			int index = startIndex;
 
-			if (!TryParse (options, buffer, ref index, endIndex, 0, AddressParserFlags.TryParse, out address))
+			if (!TryParse (AddressParserFlags.TryParse, options, buffer, ref index, endIndex, 0, out address))
 				return false;
 
 			if (!ParseUtils.SkipCommentsAndWhiteSpace (buffer, ref index, endIndex, false)) {
@@ -974,7 +981,7 @@ namespace MimeKit {
 			int endIndex = buffer.Length;
 			int index = startIndex;
 
-			if (!TryParse (options, buffer, ref index, endIndex, 0, AddressParserFlags.TryParse, out address))
+			if (!TryParse (AddressParserFlags.TryParse, options, buffer, ref index, endIndex, 0, out address))
 				return false;
 
 			if (!ParseUtils.SkipCommentsAndWhiteSpace (buffer, ref index, endIndex, false) || index != endIndex) {
@@ -1030,7 +1037,7 @@ namespace MimeKit {
 			int endIndex = buffer.Length;
 			int index = 0;
 
-			if (!TryParse (options, buffer, ref index, endIndex, 0, AddressParserFlags.TryParse, out address))
+			if (!TryParse (AddressParserFlags.TryParse, options, buffer, ref index, endIndex, 0, out address))
 				return false;
 
 			if (!ParseUtils.SkipCommentsAndWhiteSpace (buffer, ref index, endIndex, false) || index != endIndex) {
@@ -1081,7 +1088,7 @@ namespace MimeKit {
 			int endIndex = buffer.Length;
 			int index = 0;
 
-			if (!TryParse (options, buffer, ref index, endIndex, 0, AddressParserFlags.TryParse, out address))
+			if (!TryParse (AddressParserFlags.TryParse, options, buffer, ref index, endIndex, 0, out address))
 				return false;
 
 			if (!ParseUtils.SkipCommentsAndWhiteSpace (buffer, ref index, endIndex, false) || index != endIndex) {
@@ -1139,11 +1146,9 @@ namespace MimeKit {
 			ParseUtils.ValidateArguments (options, buffer, startIndex, length);
 
 			int endIndex = startIndex + length;
-			InternetAddress address;
 			int index = startIndex;
 
-			if (!TryParse (options, buffer, ref index, endIndex, 0, AddressParserFlags.Parse, out address))
-				throw new ParseException ("No address found.", startIndex, startIndex);
+			TryParse (AddressParserFlags.Parse, options, buffer, ref index, endIndex, 0, out var address);
 
 			ParseUtils.SkipCommentsAndWhiteSpace (buffer, ref index, endIndex, true);
 
@@ -1206,16 +1211,14 @@ namespace MimeKit {
 			ParseUtils.ValidateArguments (options, buffer, startIndex);
 
 			int endIndex = buffer.Length;
-			InternetAddress address;
 			int index = startIndex;
 
-			if (!TryParse (options, buffer, ref index, endIndex, 0, AddressParserFlags.Parse, out address))
-				throw new ParseException ("No address found.", startIndex, startIndex);
+			TryParse (AddressParserFlags.Parse, options, buffer, ref index, endIndex, 0, out var address);
 
 			ParseUtils.SkipCommentsAndWhiteSpace (buffer, ref index, endIndex, true);
 
 			if (index != endIndex)
-				throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Unexpected token at offset {0}", index), index, index);
+				throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Unexpected '{0}' token at offset {1}", (char) buffer[index], index), index, index);
 
 			return address;
 		}
@@ -1267,16 +1270,14 @@ namespace MimeKit {
 			ParseUtils.ValidateArguments (options, buffer);
 
 			int endIndex = buffer.Length;
-			InternetAddress address;
 			int index = 0;
 
-			if (!TryParse (options, buffer, ref index, endIndex, 0, AddressParserFlags.Parse, out address))
-				throw new ParseException ("No address found.", 0, 0);
+			TryParse (AddressParserFlags.Parse, options, buffer, ref index, endIndex, 0, out var address);
 
 			ParseUtils.SkipCommentsAndWhiteSpace (buffer, ref index, endIndex, true);
 
 			if (index != endIndex)
-				throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Unexpected token at offset {0}", index), index, index);
+				throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Unexpected '{0}' token at offset {1}", (char) buffer[index], index), index, index);
 
 			return address;
 		}
@@ -1325,16 +1326,14 @@ namespace MimeKit {
 
 			var buffer = Encoding.UTF8.GetBytes (text);
 			int endIndex = buffer.Length;
-			InternetAddress address;
 			int index = 0;
 
-			if (!TryParse (options, buffer, ref index, endIndex, 0, AddressParserFlags.Parse, out address))
-				throw new ParseException ("No address found.", 0, 0);
+			TryParse (AddressParserFlags.Parse, options, buffer, ref index, endIndex, 0, out var address);
 
 			ParseUtils.SkipCommentsAndWhiteSpace (buffer, ref index, endIndex, true);
 
 			if (index != endIndex)
-				throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Unexpected token at offset {0}", index), index, index);
+				throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Unexpected '{0}' token at offset {1}", (char) buffer[index], index), index, index);
 
 			return address;
 		}

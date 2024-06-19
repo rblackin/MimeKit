@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -28,6 +28,8 @@ using System;
 using System.IO;
 using System.Text;
 using System.Collections.Generic;
+
+using MimeKit.Utils;
 
 namespace MimeKit.Text {
 	/// <summary>
@@ -146,7 +148,7 @@ namespace MimeKit.Text {
 
 		class FlowedToHtmlTagContext : HtmlTagContext
 		{
-			HtmlAttributeCollection attrs;
+			readonly HtmlAttributeCollection attrs;
 			bool isEndTag;
 
 			public FlowedToHtmlTagContext (HtmlTagId tag, HtmlAttribute attr) : base (tag)
@@ -186,7 +188,7 @@ namespace MimeKit.Text {
 			tagContext.WriteTag (htmlWriter, true);
 		}
 
-		static string Unquote (string line, out int quoteDepth)
+		static ReadOnlySpan<char> Unquote (ReadOnlySpan<char> line, out int quoteDepth)
 		{
 			int index = 0;
 
@@ -203,7 +205,7 @@ namespace MimeKit.Text {
 			if (index > 0 && index < line.Length && line[index] == ' ')
 				index++;
 
-			return index > 0 ? line.Substring (index) : line;
+			return index > 0 ? line.Slice (index) : line;
 		}
 
 		static bool SuppressContent (IList<FlowedToHtmlTagContext> stack)
@@ -222,13 +224,12 @@ namespace MimeKit.Text {
 			var content = text.ToCharArray ();
 			int endIndex = content.Length;
 			int startIndex = 0;
-			UrlMatch match;
 			int count;
 
 			do {
 				count = endIndex - startIndex;
 
-				if (scanner.Scan (content, startIndex, count, out match)) {
+				if (scanner.Scan (content, startIndex, count, out var match)) {
 					count = match.EndIndex - match.StartIndex;
 
 					if (match.StartIndex > startIndex) {
@@ -330,10 +331,10 @@ namespace MimeKit.Text {
 		/// </exception>
 		public override void Convert (TextReader reader, TextWriter writer)
 		{
-			if (reader == null)
+			if (reader is null)
 				throw new ArgumentNullException (nameof (reader));
 
-			if (writer == null)
+			if (writer is null)
 				throw new ArgumentNullException (nameof (writer));
 
 			if (!OutputHtmlFragment)
@@ -356,16 +357,15 @@ namespace MimeKit.Text {
 				var para = new StringBuilder ();
 				int currentQuoteDepth = 0;
 				int paraQuoteDepth = -1;
-				int quoteDepth;
 				string line;
 
 				while ((line = reader.ReadLine ()) != null) {
 					// unquote the line
-					line = Unquote (line, out quoteDepth);
+					var unquoted = Unquote (line.AsSpan (), out int quoteDepth);
 
-					// remove space-stuffing
-					if (line.Length > 0 && line[0] == ' ')
-						line = line.Substring (1);
+					// if there is a leading space, it was stuffed
+					if (quoteDepth == 0 && unquoted.Length > 0 && unquoted[0] == ' ')
+						unquoted = unquoted.Slice (1);
 
 					if (para.Length == 0) {
 						paraQuoteDepth = quoteDepth;
@@ -378,9 +378,9 @@ namespace MimeKit.Text {
 						para.Length = 0;
 					}
 
-					para.Append (line);
+					para.Append (unquoted);
 
-					if (line.Length == 0 || line[line.Length - 1] != ' ') {
+					if (unquoted.Length == 0 || unquoted[unquoted.Length - 1] != ' ') {
 						// line did not end with a space, so the next line will start a new paragraph
 						WriteParagraph (htmlWriter, stack, ref currentQuoteDepth, para, paraQuoteDepth);
 						paraQuoteDepth = 0;

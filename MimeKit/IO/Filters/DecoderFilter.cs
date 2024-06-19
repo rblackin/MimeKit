@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -39,7 +39,7 @@ namespace MimeKit.IO.Filters {
 	public class DecoderFilter : MimeFilterBase
 	{
 		/// <summary>
-		/// Gets the decoder used by this filter.
+		/// Get the decoder used by this filter.
 		/// </summary>
 		/// <remarks>
 		/// Gets the decoder used by this filter.
@@ -50,7 +50,7 @@ namespace MimeKit.IO.Filters {
 		}
 
 		/// <summary>
-		/// Gets the encoding.
+		/// Get the encoding.
 		/// </summary>
 		/// <remarks>
 		/// Gets the encoding that the decoder supports.
@@ -72,7 +72,7 @@ namespace MimeKit.IO.Filters {
 		/// </exception>
 		public DecoderFilter (IMimeDecoder decoder)
 		{
-			if (decoder == null)
+			if (decoder is null)
 				throw new ArgumentNullException (nameof (decoder));
 
 			Decoder = decoder;
@@ -109,12 +109,10 @@ namespace MimeKit.IO.Filters {
 		/// </exception>
 		public static IMimeFilter Create (string name)
 		{
-			ContentEncoding encoding;
-
-			if (name == null)
+			if (name is null)
 				throw new ArgumentNullException (nameof (name));
 
-			if (!MimeUtils.TryParse (name, out encoding))
+			if (!MimeUtils.TryParse (name, out ContentEncoding encoding))
 				encoding = ContentEncoding.Default;
 
 			return Create (encoding);
@@ -145,7 +143,7 @@ namespace MimeKit.IO.Filters {
 		}
 
 		/// <summary>
-		/// Resets the filter.
+		/// Reset the filter.
 		/// </summary>
 		/// <remarks>
 		/// Resets the filter.

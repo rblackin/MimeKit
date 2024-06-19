@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -61,7 +61,7 @@ namespace MimeKit.IO {
 		}
 
 		/// <summary>
-		/// Add the specified stream to the chained stream.
+		/// Add a stream to the chained stream.
 		/// </summary>
 		/// <remarks>
 		/// Adds the stream to the end of the chain.
@@ -75,7 +75,7 @@ namespace MimeKit.IO {
 		/// </exception>
 		public void Add (Stream stream, bool leaveOpen = false)
 		{
-			if (stream == null)
+			if (stream is null)
 				throw new ArgumentNullException (nameof (stream));
 
 			this.leaveOpen.Add (leaveOpen);
@@ -108,7 +108,7 @@ namespace MimeKit.IO {
 		}
 
 		/// <summary>
-		/// Checks whether or not the stream supports reading.
+		/// Check whether or not the stream supports reading.
 		/// </summary>
 		/// <remarks>
 		/// The <see cref="ChainedStream"/> only supports reading if all of its
@@ -127,7 +127,7 @@ namespace MimeKit.IO {
 		}
 
 		/// <summary>
-		/// Checks whether or not the stream supports writing.
+		/// Check whether or not the stream supports writing.
 		/// </summary>
 		/// <remarks>
 		/// The <see cref="ChainedStream"/> only supports writing if all of its
@@ -146,7 +146,7 @@ namespace MimeKit.IO {
 		}
 
 		/// <summary>
-		/// Checks whether or not the stream supports seeking.
+		/// Check whether or not the stream supports seeking.
 		/// </summary>
 		/// <remarks>
 		/// The <see cref="ChainedStream"/> only supports seeking if all of its
@@ -165,7 +165,7 @@ namespace MimeKit.IO {
 		}
 
 		/// <summary>
-		/// Checks whether or not I/O operations can timeout.
+		/// Check whether or not I/O operations can timeout.
 		/// </summary>
 		/// <remarks>
 		/// The <see cref="ChainedStream"/> only supports timeouts if all of its
@@ -177,7 +177,7 @@ namespace MimeKit.IO {
 		}
 
 		/// <summary>
-		/// Gets the length of the stream, in bytes.
+		/// Get the length of the stream, in bytes.
 		/// </summary>
 		/// <remarks>
 		/// The length of a <see cref="ChainedStream"/> is the combined lenths of all
@@ -204,7 +204,7 @@ namespace MimeKit.IO {
 		}
 
 		/// <summary>
-		/// Gets or sets the current position within the stream.
+		/// Get or set the current position within the stream.
 		/// </summary>
 		/// <remarks>
 		/// It is always possible to get the position of a <see cref="ChainedStream"/>,
@@ -227,7 +227,7 @@ namespace MimeKit.IO {
 
 		static void ValidateArguments (byte[] buffer, int offset, int count)
 		{
-			if (buffer == null)
+			if (buffer is null)
 				throw new ArgumentNullException (nameof (buffer));
 
 			if (offset < 0 || offset > buffer.Length)
@@ -238,7 +238,7 @@ namespace MimeKit.IO {
 		}
 
 		/// <summary>
-		/// Reads a sequence of bytes from the stream and advances the position
+		/// Read a sequence of bytes from the stream and advances the position
 		/// within the stream by the number of bytes read.
 		/// </summary>
 		/// <remarks>
@@ -301,7 +301,7 @@ namespace MimeKit.IO {
 		}
 
 		/// <summary>
-		/// Asynchronously reads a sequence of bytes from the stream and advances the position
+		/// Asynchronously read a sequence of bytes from the stream and advances the position
 		/// within the stream by the number of bytes read.
 		/// </summary>
 		/// <remarks>
@@ -372,7 +372,7 @@ namespace MimeKit.IO {
 		}
 
 		/// <summary>
-		/// Writes a sequence of bytes to the stream and advances the current
+		/// Write a sequence of bytes to the stream and advances the current
 		/// position within this stream by the number of bytes written.
 		/// </summary>
 		/// <remarks>
@@ -436,7 +436,7 @@ namespace MimeKit.IO {
 		}
 
 		/// <summary>
-		/// Asynchronously writes a sequence of bytes to the stream and advances the current
+		/// Asynchronously write a sequence of bytes to the stream and advances the current
 		/// position within this stream by the number of bytes written.
 		/// </summary>
 		/// <remarks>
@@ -502,7 +502,7 @@ namespace MimeKit.IO {
 		}
 
 		/// <summary>
-		/// Sets the position within the current stream.
+		/// Set the position within the current stream.
 		/// </summary>
 		/// <remarks>
 		/// Seeks to the specified position within the stream if all child streams
@@ -602,7 +602,7 @@ namespace MimeKit.IO {
 		}
 
 		/// <summary>
-		/// Clears all buffers for this stream and causes any buffered data to be written
+		/// Clear all buffers for this stream and causes any buffered data to be written
 		/// to the underlying device.
 		/// </summary>
 		/// <remarks>
@@ -628,7 +628,7 @@ namespace MimeKit.IO {
 		}
 
 		/// <summary>
-		/// Asynchronously clears all buffers for this stream and causes any buffered data to be written
+		/// Asynchronously clear all buffers for this stream and causes any buffered data to be written
 		/// to the underlying device.
 		/// </summary>
 		/// <remarks>
@@ -659,7 +659,7 @@ namespace MimeKit.IO {
 		}
 
 		/// <summary>
-		/// Sets the length of the stream.
+		/// Set the length of the stream.
 		/// </summary>
 		/// <remarks>
 		/// Setting the length of a <see cref="ChainedStream"/> is not supported.
@@ -679,9 +679,13 @@ namespace MimeKit.IO {
 		}
 
 		/// <summary>
-		/// Releases the unmanaged resources used by the <see cref="ChainedStream"/> and
+		/// Release the unmanaged resources used by the <see cref="ChainedStream"/> and
 		/// optionally releases the managed resources.
 		/// </summary>
+		/// <remarks>
+		/// Releases the unmanaged resources used by the <see cref="ChainedStream"/> and
+		/// optionally releases the managed resources.
+		/// </remarks>
 		/// <param name="disposing"><c>true</c> to release both managed and unmanaged resources;
 		/// <c>false</c> to release only the unmanaged resources.</param>
 		protected override void Dispose (bool disposing)

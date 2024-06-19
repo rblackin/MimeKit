@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -37,12 +37,7 @@ namespace MimeKit.Encodings {
 	/// </remarks>
 	public class Base64Encoder : IMimeEncoder
 	{
-		static readonly byte[] base64_alphabet = {
-			0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F, 0x50,
-			0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66,
-			0x67, 0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76,
-			0x77, 0x78, 0x79, 0x7A, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x2B, 0x2F
-		};
+		static ReadOnlySpan<byte> base64_alphabet => "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"u8;
 
 		readonly int quartetsPerLine;
 		readonly bool rfc2047;
@@ -62,10 +57,13 @@ namespace MimeKit.Encodings {
 		/// <exception cref="System.ArgumentOutOfRangeException">
 		/// <paramref name="maxLineLength"/> is not between <c>60</c> and <c>998</c> (inclusive).
 		/// </exception>
-		internal Base64Encoder (bool rfc2047, int maxLineLength = 72)
+		internal Base64Encoder (bool rfc2047, int maxLineLength = 76)
 		{
 			if (maxLineLength < FormatOptions.MinimumLineLength || maxLineLength > FormatOptions.MaximumLineLength)
 				throw new ArgumentOutOfRangeException (nameof (maxLineLength));
+
+			// The base64 specification in rfc2045 require a maximum line length of 76.
+			maxLineLength = Math.Min (maxLineLength, 76);
 
 			quartetsPerLine = maxLineLength / 4;
 			this.rfc2047 = rfc2047;
@@ -81,7 +79,7 @@ namespace MimeKit.Encodings {
 		/// <exception cref="System.ArgumentOutOfRangeException">
 		/// <paramref name="maxLineLength"/> is not between <c>60</c> and <c>998</c> (inclusive).
 		/// </exception>
-		public Base64Encoder (int maxLineLength = 72) : this (false, maxLineLength)
+		public Base64Encoder (int maxLineLength = 76) : this (false, maxLineLength)
 		{
 		}
 
@@ -94,18 +92,16 @@ namespace MimeKit.Encodings {
 		/// <returns>A new <see cref="Base64Encoder"/> with identical state.</returns>
 		public IMimeEncoder Clone ()
 		{
-			var encoder = new Base64Encoder (rfc2047, quartetsPerLine * 4);
-
-			encoder.quartets = quartets;
-			encoder.saved1 = saved1;
-			encoder.saved2 = saved2;
-			encoder.saved = saved;
-
-			return encoder;
+			return new Base64Encoder (rfc2047, quartetsPerLine * 4) {
+				quartets = quartets,
+				saved1 = saved1,
+				saved2 = saved2,
+				saved = saved
+			};
 		}
 
 		/// <summary>
-		/// Gets the encoding.
+		/// Get the encoding.
 		/// </summary>
 		/// <remarks>
 		/// Gets the encoding that the encoder supports.
@@ -116,7 +112,7 @@ namespace MimeKit.Encodings {
 		}
 
 		/// <summary>
-		/// Estimates the length of the output.
+		/// Estimate the length of the output.
 		/// </summary>
 		/// <remarks>
 		/// Estimates the number of bytes needed to encode the specified number of input bytes.
@@ -136,7 +132,7 @@ namespace MimeKit.Encodings {
 
 		void ValidateArguments (byte[] input, int startIndex, int length, byte[] output)
 		{
-			if (input == null)
+			if (input is null)
 				throw new ArgumentNullException (nameof (input));
 
 			if (startIndex < 0 || startIndex > input.Length)
@@ -145,7 +141,7 @@ namespace MimeKit.Encodings {
 			if (length < 0 || length > (input.Length - startIndex))
 				throw new ArgumentOutOfRangeException (nameof (length));
 
-			if (output == null)
+			if (output is null)
 				throw new ArgumentNullException (nameof (output));
 
 			if (output.Length < EstimateOutputLength (length))
@@ -154,9 +150,6 @@ namespace MimeKit.Encodings {
 
 		unsafe int Encode (byte* input, int length, byte* output)
 		{
-			if (length == 0)
-				return 0;
-
 			int remaining = length;
 			byte* outptr = output;
 			byte* inptr = input;
@@ -215,7 +208,7 @@ namespace MimeKit.Encodings {
 		}
 
 		/// <summary>
-		/// Encodes the specified input into the output buffer.
+		/// Encode the specified input into the output buffer.
 		/// </summary>
 		/// <remarks>
 		/// <para>Encodes the specified input into the output buffer.</para>
@@ -271,9 +264,10 @@ namespace MimeKit.Encodings {
 				else
 					*outptr++ = (byte) '=';
 				*outptr++ = (byte) '=';
+				quartets++;
 			}
 
-			if (!rfc2047)
+			if (!rfc2047 && quartets > 0)
 				*outptr++ = (byte) '\n';
 
 			Reset ();
@@ -282,7 +276,7 @@ namespace MimeKit.Encodings {
 		}
 
 		/// <summary>
-		/// Encodes the specified input into the output buffer, flushing any internal buffer state as well.
+		/// Encode the specified input into the output buffer, flushing any internal buffer state as well.
 		/// </summary>
 		/// <remarks>
 		/// <para>Encodes the specified input into the output buffer, flusing any internal state as well.</para>
@@ -321,7 +315,7 @@ namespace MimeKit.Encodings {
 		}
 
 		/// <summary>
-		/// Resets the encoder.
+		/// Reset the encoder.
 		/// </summary>
 		/// <remarks>
 		/// Resets the state of the encoder.

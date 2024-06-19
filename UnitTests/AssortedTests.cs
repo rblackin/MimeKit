@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,13 +24,8 @@
 // THE SOFTWARE.
 //
 
-using System;
-using System.IO;
-using System.Linq;
 using System.Text;
 using System.Globalization;
-
-using NUnit.Framework;
 
 using MimeKit;
 using MimeKit.Utils;
@@ -45,14 +40,14 @@ namespace UnitTests {
 			var obsolete = "Joe Sixpack's message sent on Mon, 17 Jan 1994 11:14:55 -0500 <some.message.id.1@some.domain>";
 			var msgid = MimeUtils.EnumerateReferences (obsolete).FirstOrDefault ();
 
-			Assert.IsNotNull (msgid, "The parsed msgid token should not be null");
-			Assert.AreEqual ("some.message.id.1@some.domain", msgid, "The parsed msgid does not match");
+			Assert.That (msgid, Is.Not.Null, "The parsed msgid token should not be null");
+			Assert.That (msgid, Is.EqualTo ("some.message.id.1@some.domain"), "The parsed msgid does not match");
 
 			obsolete = "<some.message.id.2@some.domain> as sent on Mon, 17 Jan 1994 11:14:55 -0500";
 			msgid = MimeUtils.EnumerateReferences (obsolete).FirstOrDefault ();
 
-			Assert.IsNotNull (msgid, "The parsed msgid token should not be null");
-			Assert.AreEqual ("some.message.id.2@some.domain", msgid, "The parsed msgid does not match");
+			Assert.That (msgid, Is.Not.Null, "The parsed msgid token should not be null");
+			Assert.That (msgid, Is.EqualTo ("some.message.id.2@some.domain"), "The parsed msgid does not match");
 		}
 
 		[Test]
@@ -64,15 +59,15 @@ namespace UnitTests {
 
 			options.Rfc2047ComplianceMode = RfcComplianceMode.Strict;
 			actual = Rfc2047.DecodePhrase (options, Encoding.ASCII.GetBytes (input));
-			Assert.AreEqual ("hola", actual);
+			Assert.That (actual, Is.EqualTo ("hola"));
 
 			options.Rfc2047ComplianceMode = RfcComplianceMode.Loose;
 			actual = Rfc2047.DecodePhrase (options, Encoding.ASCII.GetBytes (input));
-			Assert.AreEqual ("hola", actual, "Unexpected result when workarounds enabled.");
+			Assert.That (actual, Is.EqualTo ("hola"), "Unexpected result when workarounds enabled.");
 		}
 
 		[Test]
-		public void TestSimpleRfc2047BEcnodedPhrase ()
+		public void TestSimpleRfc2047BEncodedPhrase ()
 		{
 			var options = ParserOptions.Default.Clone ();
 			var input = "=?iso-8859-1?B?aG9sYQ==?=";
@@ -80,11 +75,11 @@ namespace UnitTests {
 
 			options.Rfc2047ComplianceMode = RfcComplianceMode.Strict;
 			actual = Rfc2047.DecodePhrase (options, Encoding.ASCII.GetBytes (input));
-			Assert.AreEqual ("hola", actual);
+			Assert.That (actual, Is.EqualTo ("hola"));
 
 			options.Rfc2047ComplianceMode = RfcComplianceMode.Loose;
 			actual = Rfc2047.DecodePhrase (options, Encoding.ASCII.GetBytes (input));
-			Assert.AreEqual ("hola", actual, "Unexpected result when workarounds enabled.");
+			Assert.That (actual, Is.EqualTo ("hola"), "Unexpected result when workarounds enabled.");
 		}
 
 		[Test]
@@ -96,11 +91,11 @@ namespace UnitTests {
 
 			options.Rfc2047ComplianceMode = RfcComplianceMode.Strict;
 			actual = Rfc2047.DecodeText (options, Encoding.ASCII.GetBytes (input));
-			Assert.AreEqual ("hola", actual);
+			Assert.That (actual, Is.EqualTo ("hola"));
 
 			options.Rfc2047ComplianceMode = RfcComplianceMode.Loose;
 			actual = Rfc2047.DecodeText (options, Encoding.ASCII.GetBytes (input));
-			Assert.AreEqual ("hola", actual, "Unexpected result when workarounds enabled.");
+			Assert.That (actual, Is.EqualTo ("hola"), "Unexpected result when workarounds enabled.");
 		}
 
 		[Test]
@@ -112,11 +107,11 @@ namespace UnitTests {
 
 			options.Rfc2047ComplianceMode = RfcComplianceMode.Strict;
 			actual = Rfc2047.DecodeText (options, Encoding.ASCII.GetBytes (input));
-			Assert.AreEqual ("hola", actual);
+			Assert.That (actual, Is.EqualTo ("hola"));
 
 			options.Rfc2047ComplianceMode = RfcComplianceMode.Loose;
 			actual = Rfc2047.DecodeText (options, Encoding.ASCII.GetBytes (input));
-			Assert.AreEqual ("hola", actual, "Unexpected result when workarounds enabled.");
+			Assert.That (actual, Is.EqualTo ("hola"), "Unexpected result when workarounds enabled.");
 		}
 
 		[Test]
@@ -132,7 +127,7 @@ namespace UnitTests {
 
 				var decoded = Rfc2047.DecodeText (Encoding.ASCII.GetBytes (builder.ToString ()));
 
-				Assert.AreEqual (japanese, decoded, "Decoded text did not match the original.");
+				Assert.That (decoded, Is.EqualTo (japanese), "Decoded text did not match the original.");
 
 				builder.Clear ();
 			}
@@ -146,12 +141,12 @@ namespace UnitTests {
 			var base64 = Convert.ToBase64String (utf8);
 			var builder = new StringBuilder ();
 
-			builder.Append ("=?utf-8?b?").Append (base64.Substring (0, base64.Length - 6)).Append ("?= ");
-			builder.Append ("=?utf-8?b?").Append (base64.Substring (base64.Length - 6)).Append ("?=");
+			builder.Append ("=?utf-8?b?").Append (base64.AsSpan (0, base64.Length - 6)).Append ("?= ");
+			builder.Append ("=?utf-8?b?").Append (base64.AsSpan (base64.Length - 6)).Append ("?=");
 
 			var decoded = Rfc2047.DecodeText (Encoding.ASCII.GetBytes (builder.ToString ()));
 
-			Assert.AreEqual (japanese, decoded, "Decoded text did not match the original.");
+			Assert.That (decoded, Is.EqualTo (japanese), "Decoded text did not match the original.");
 		}
 
 		[Test]
@@ -163,11 +158,11 @@ namespace UnitTests {
 
 			// Note: we won't be able to get a codepage for x-unknown.
 			actual = Rfc2047.DecodeText (Encoding.ASCII.GetBytes (xunknown));
-			Assert.AreEqual ("hola", actual, "Unexpected decoding of x-unknown.");
+			Assert.That (actual, Is.EqualTo ("hola"), "Unexpected decoding of x-unknown.");
 
 			// Note: cp-1260 doesn't exist, but will make CharsetUtils parse the codepage as 1260.
 			actual = Rfc2047.DecodeText (Encoding.ASCII.GetBytes (cp1260));
-			Assert.AreEqual ("hola", actual, "Unexpected decoding of cp1260.");
+			Assert.That (actual, Is.EqualTo ("hola"), "Unexpected decoding of cp1260.");
 		}
 
 		[Test]
@@ -175,7 +170,7 @@ namespace UnitTests {
 		{
 			var msgid = MimeUtils.EnumerateReferences ("<local-part@domain1@domain2>").FirstOrDefault ();
 
-			Assert.AreEqual ("local-part@domain1@domain2", msgid);
+			Assert.That (msgid, Is.EqualTo ("local-part@domain1@domain2"));
 		}
 
 		[Test]
@@ -184,7 +179,7 @@ namespace UnitTests {
 			// https://github.com/jstedfast/MimeKit/issues/102
 			var msgid = MimeUtils.EnumerateReferences ("<local-part@>").FirstOrDefault ();
 
-			Assert.AreEqual ("local-part@", msgid);
+			Assert.That (msgid, Is.EqualTo ("local-part@"));
 		}
 
 		[Test]
@@ -192,7 +187,7 @@ namespace UnitTests {
 		{
 			var msgid = MimeUtils.EnumerateReferences ("<local-part>").FirstOrDefault ();
 
-			Assert.AreEqual ("local-part", msgid);
+			Assert.That (msgid, Is.EqualTo ("local-part"));
 		}
 
 		[Test]
@@ -212,17 +207,12 @@ namespace UnitTests {
 				case 10: case 12: case 14:
 					expected = -1;
 					break;
-				case 13:
-					if (Path.DirectorySeparatorChar == '\\')
-						goto default;
-					expected = -1;
-					break;
 				default:
 					expected = 28590 + i;
 					break;
 				}
 
-				Assert.AreEqual (expected, codepage, "Invalid codepage for: {0}", name);
+				Assert.That (codepage, Is.EqualTo (expected), $"Invalid codepage for: {name}");
 			}
 
 			for (int i = 0; i < 10; i++) {
@@ -237,17 +227,17 @@ namespace UnitTests {
 				name = string.Format (CultureInfo.InvariantCulture, "windows-125{0}", i);
 				codepage = CharsetUtils.GetCodePage (name);
 
-				Assert.AreEqual (expected, codepage, "Invalid codepage for: {0}", name);
+				Assert.That (codepage, Is.EqualTo (expected), $"Invalid codepage for: {name}");
 
 				name = string.Format (CultureInfo.InvariantCulture, "windows-cp125{0}", i);
 				codepage = CharsetUtils.GetCodePage (name);
 
-				Assert.AreEqual (expected, codepage, "Invalid codepage for: {0}", name);
+				Assert.That (codepage, Is.EqualTo (expected), $"Invalid codepage for: {name}");
 
 				name = string.Format (CultureInfo.InvariantCulture, "cp125{0}", i);
 				codepage = CharsetUtils.GetCodePage (name);
 
-				Assert.AreEqual (expected, codepage, "Invalid codepage for: {0}", name);
+				Assert.That (codepage, Is.EqualTo (expected), $"Invalid codepage for: {name}");
 			}
 
 			foreach (var ibm in new int[] { 850, 852, 855, 857, 860, 861, 862, 863 }) {
@@ -257,7 +247,7 @@ namespace UnitTests {
 				name = string.Format (CultureInfo.InvariantCulture, "ibm-{0}", ibm);
 				codepage = CharsetUtils.GetCodePage (name);
 
-				Assert.AreEqual (ibm, codepage, "Invalid codepage for: {0}", name);
+				Assert.That (codepage, Is.EqualTo (ibm), $"Invalid codepage for: {name}");
 			}
 		}
 	}

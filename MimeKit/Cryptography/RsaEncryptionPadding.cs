@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -47,26 +47,41 @@ namespace MimeKit.Cryptography {
 		/// <summary>
 		/// The PKCS #1 v1.5 encryption padding.
 		/// </summary>
+		/// <remarks>
+		/// The PKCS #1 v1.5 encryption padding.
+		/// </remarks>
 		public static readonly RsaEncryptionPadding Pkcs1 = new RsaEncryptionPadding (RsaEncryptionPaddingScheme.Pkcs1, DigestAlgorithm.None);
 
 		/// <summary>
 		/// The Optimal Asymmetric Encryption Padding (OAEP) scheme using the default (SHA-1) hash algorithm.
 		/// </summary>
+		/// <remarks>
+		/// The Optimal Asymmetric Encryption Padding (OAEP) scheme using the default (SHA-1) hash algorithm.
+		/// </remarks>
 		public static readonly RsaEncryptionPadding OaepSha1 = new RsaEncryptionPadding (RsaEncryptionPaddingScheme.Oaep, DigestAlgorithm.Sha1);
 
 		/// <summary>
 		/// The Optimal Asymmetric Encryption Padding (OAEP) scheme using the SHA-256 hash algorithm.
 		/// </summary>
+		/// <remarks>
+		/// The Optimal Asymmetric Encryption Padding (OAEP) scheme using the SHA-256 hash algorithm.
+		/// </remarks>
 		public static readonly RsaEncryptionPadding OaepSha256 = new RsaEncryptionPadding (RsaEncryptionPaddingScheme.Oaep, DigestAlgorithm.Sha256);
 
 		/// <summary>
 		/// The Optimal Asymmetric Encryption Padding (OAEP) scheme using the SHA-384 hash algorithm.
 		/// </summary>
+		/// <remarks>
+		/// The Optimal Asymmetric Encryption Padding (OAEP) scheme using the SHA-384 hash algorithm.
+		/// </remarks>
 		public static readonly RsaEncryptionPadding OaepSha384 = new RsaEncryptionPadding (RsaEncryptionPaddingScheme.Oaep, DigestAlgorithm.Sha384);
 
 		/// <summary>
 		/// The Optimal Asymmetric Encryption Padding (OAEP) scheme using the SHA-512 hash algorithm.
 		/// </summary>
+		/// <remarks>
+		/// The Optimal Asymmetric Encryption Padding (OAEP) scheme using the SHA-512 hash algorithm.
+		/// </remarks>
 		public static readonly RsaEncryptionPadding OaepSha512 = new RsaEncryptionPadding (RsaEncryptionPaddingScheme.Oaep, DigestAlgorithm.Sha512);
 
 		RsaEncryptionPadding (RsaEncryptionPaddingScheme scheme, DigestAlgorithm oaepHashAlgorithm)
@@ -92,6 +107,7 @@ namespace MimeKit.Cryptography {
 		/// <remarks>
 		/// Gets the hash algorithm used for RSAES-OAEP padding.
 		/// </remarks>
+		/// <value>The hash algorithm used for RSAES-OAEP padding.</value>
 		public DigestAlgorithm OaepHashAlgorithm {
 			get; private set;
 		}
@@ -107,7 +123,7 @@ namespace MimeKit.Cryptography {
 		/// <see cref="RsaEncryptionPadding"/>; otherwise, <c>false</c>.</returns>
 		public bool Equals (RsaEncryptionPadding other)
 		{
-			if (other == null)
+			if (other is null)
 				return false;
 
 			return other.Scheme == Scheme && other.OaepHashAlgorithm == OaepHashAlgorithm;
@@ -166,8 +182,8 @@ namespace MimeKit.Cryptography {
 		/// <returns><c>true</c> if <paramref name="left"/> and <paramref name="right"/> are equal; otherwise, <c>false</c>.</returns>
 		public static bool operator == (RsaEncryptionPadding left, RsaEncryptionPadding right)
 		{
-			if (ReferenceEquals (left, null))
-				return ReferenceEquals (right, null);
+			if (left is null)
+				return right is null;
 
 			return left.Equals (right);
 		}

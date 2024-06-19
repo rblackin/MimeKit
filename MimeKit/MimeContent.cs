@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -41,38 +41,6 @@ namespace MimeKit {
 	/// A <see cref="MimeContent"/> represents the content of a <see cref="MimePart"/>.
 	/// The content has both a stream and an encoding (typically <see cref="ContentEncoding.Default"/>).
 	/// </remarks>
-	[Obsolete ("Use the MimeContent class instead.")]
-	public class ContentObject : MimeContent
-	{
-		/// <summary>
-		/// Initialize a new instance of the <see cref="ContentObject"/> class.
-		/// </summary>
-		/// <remarks>
-		/// When creating new <see cref="MimePart"/>s, the <paramref name="encoding"/>
-		/// should typically be <see cref="ContentEncoding.Default"/> unless the
-		/// <paramref name="stream"/> has already been encoded.
-		/// </remarks>
-		/// <param name="stream">The content stream.</param>
-		/// <param name="encoding">The stream encoding.</param>
-		/// <exception cref="System.ArgumentNullException">
-		/// <paramref name="stream"/> is <c>null</c>.
-		/// </exception>
-		/// <exception cref="System.ArgumentException">
-		/// <para><paramref name="stream"/> does not support reading.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="stream"/> does not support seeking.</para>
-		/// </exception>
-		[Obsolete ("Use the MimeContent class instead.")]
-		public ContentObject (Stream stream, ContentEncoding encoding = ContentEncoding.Default) : base (stream, encoding) {}
-	}
-
-	/// <summary>
-	/// Encapsulates a content stream used by <see cref="MimePart"/>.
-	/// </summary>
-	/// <remarks>
-	/// A <see cref="MimeContent"/> represents the content of a <see cref="MimePart"/>.
-	/// The content has both a stream and an encoding (typically <see cref="ContentEncoding.Default"/>).
-	/// </remarks>
 	/// <example>
 	/// <code language="c#" source="Examples\AttachmentExamples.cs" region="SaveAttachments" />
 	/// </example>
@@ -100,7 +68,7 @@ namespace MimeKit {
 		/// </exception>
 		public MimeContent (Stream stream, ContentEncoding encoding = ContentEncoding.Default)
 		{
-			if (stream == null)
+			if (stream is null)
 				throw new ArgumentNullException (nameof (stream));
 
 			if (!stream.CanRead)
@@ -113,7 +81,26 @@ namespace MimeKit {
 			Stream = stream;
 		}
 
-		#region IContentObject implementation
+		/// <summary>
+		/// Releases unmanaged resources and performs other cleanup operations before the
+		/// <see cref="MimeContent"/> is reclaimed by garbage collection.
+		/// </summary>
+		/// <remarks>
+		/// Releases unmanaged resources and performs other cleanup operations before the
+		/// <see cref="MimeContent"/> is reclaimed by garbage collection.
+		/// </remarks>
+		~MimeContent ()
+		{
+			Dispose (false);
+		}
+
+		void CheckDisposed ()
+		{
+			if (Stream is null)
+				throw new ObjectDisposedException ("MimeContent");
+		}
+
+		#region IMimeContent implementation
 
 		/// <summary>
 		/// Get or set the content encoding.
@@ -158,8 +145,13 @@ namespace MimeKit {
 		/// stream using <see cref="DecodeTo(System.IO.Stream,System.Threading.CancellationToken)"/>.
 		/// </remarks>
 		/// <returns>The decoded content stream.</returns>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeContent"/> has been disposed.
+		/// </exception>
 		public Stream Open ()
 		{
+			CheckDisposed ();
+
 			Stream.Seek (0, SeekOrigin.Begin);
 
 			var filtered = new FilteredStream (Stream);
@@ -182,16 +174,21 @@ namespace MimeKit {
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="stream"/> is <c>null</c>.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeContent"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public void WriteTo (Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public void WriteTo (Stream stream, CancellationToken cancellationToken = default)
 		{
-			if (stream == null)
+			if (stream is null)
 				throw new ArgumentNullException (nameof (stream));
+
+			CheckDisposed ();
 
 			Stream.Seek (0, SeekOrigin.Begin);
 
@@ -248,16 +245,21 @@ namespace MimeKit {
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="stream"/> is <c>null</c>.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeContent"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public async Task WriteToAsync (Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public async Task WriteToAsync (Stream stream, CancellationToken cancellationToken = default)
 		{
-			if (stream == null)
+			if (stream is null)
 				throw new ArgumentNullException (nameof (stream));
+
+			CheckDisposed ();
 
 			Stream.Seek (0, SeekOrigin.Begin);
 
@@ -302,16 +304,21 @@ namespace MimeKit {
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="stream"/> is <c>null</c>.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeContent"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public void DecodeTo (Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public void DecodeTo (Stream stream, CancellationToken cancellationToken = default)
 		{
-			if (stream == null)
+			if (stream is null)
 				throw new ArgumentNullException (nameof (stream));
+
+			CheckDisposed ();
 
 			using (var filtered = new FilteredStream (stream)) {
 				filtered.Add (DecoderFilter.Create (Encoding));
@@ -337,22 +344,62 @@ namespace MimeKit {
 		/// <exception cref="System.ArgumentNullException">
 		/// <paramref name="stream"/> is <c>null</c>.
 		/// </exception>
+		/// <exception cref="System.ObjectDisposedException">
+		/// The <see cref="MimeContent"/> has been disposed.
+		/// </exception>
 		/// <exception cref="System.OperationCanceledException">
 		/// The operation was canceled via the cancellation token.
 		/// </exception>
 		/// <exception cref="System.IO.IOException">
 		/// An I/O error occurred.
 		/// </exception>
-		public async Task DecodeToAsync (Stream stream, CancellationToken cancellationToken = default (CancellationToken))
+		public async Task DecodeToAsync (Stream stream, CancellationToken cancellationToken = default)
 		{
-			if (stream == null)
+			if (stream is null)
 				throw new ArgumentNullException (nameof (stream));
+
+			CheckDisposed ();
 
 			using (var filtered = new FilteredStream (stream)) {
 				filtered.Add (DecoderFilter.Create (Encoding));
 				await WriteToAsync (filtered, cancellationToken).ConfigureAwait (false);
 				await filtered.FlushAsync (cancellationToken).ConfigureAwait (false);
 			}
+		}
+
+		#endregion
+
+		#region IDisposable implementation
+
+		/// <summary>
+		/// Release the unmanaged resources used by the <see cref="MimeContent"/> and
+		/// optionally releases the managed resources.
+		/// </summary>
+		/// <remarks>
+		/// Releases the unmanaged resources used by the <see cref="MimeContent"/> and
+		/// optionally releases the managed resources.
+		/// </remarks>
+		/// <param name="disposing"><c>true</c> to release both managed and unmanaged resources;
+		/// <c>false</c> to release only the unmanaged resources.</param>
+		protected virtual void Dispose (bool disposing)
+		{
+			if (disposing && Stream != null) {
+				Stream.Dispose ();
+				Stream = null;
+			}
+		}
+
+		/// <summary>
+		/// Release all resources used by the <see cref="MimeContent"/> object.
+		/// </summary>
+		/// <remarks>Call <see cref="Dispose()"/> when you are finished using the <see cref="MimeContent"/>. The
+		/// <see cref="Dispose()"/> method leaves the <see cref="MimeContent"/> in an unusable state. After
+		/// calling <see cref="Dispose()"/>, you must release all references to the <see cref="MimeContent"/> so
+		/// the garbage collector can reclaim the memory that the <see cref="MimeContent"/> was occupying.</remarks>
+		public void Dispose ()
+		{
+			Dispose (true);
+			GC.SuppressFinalize (this);
 		}
 
 		#endregion

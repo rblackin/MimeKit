@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -66,7 +66,7 @@ namespace MimeKit {
 		/// </exception>
 		public InternetAddressList (IEnumerable<InternetAddress> addresses)
 		{
-			if (addresses == null)
+			if (addresses is null)
 				throw new ArgumentNullException (nameof (addresses));
 
 			foreach (var address in addresses) {
@@ -96,9 +96,7 @@ namespace MimeKit {
 		public IEnumerable<MailboxAddress> Mailboxes {
 			get {
 				foreach (var address in list) {
-					var group = address as GroupAddress;
-
-					if (group != null) {
+					if (address is GroupAddress group) {
 						foreach (var mailbox in group.Members.Mailboxes)
 							yield return mailbox;
 					} else {
@@ -125,7 +123,7 @@ namespace MimeKit {
 		/// </exception>
 		public int IndexOf (InternetAddress address)
 		{
-			if (address == null)
+			if (address is null)
 				throw new ArgumentNullException (nameof (address));
 
 			return list.IndexOf (address);
@@ -150,7 +148,7 @@ namespace MimeKit {
 			if (index < 0 || index > list.Count)
 				throw new ArgumentOutOfRangeException (nameof (index));
 
-			if (address == null)
+			if (address is null)
 				throw new ArgumentNullException (nameof (address));
 
 			address.Changed += AddressChanged;
@@ -198,7 +196,7 @@ namespace MimeKit {
 				if (index < 0 || index >= list.Count)
 					throw new ArgumentOutOfRangeException (nameof (index));
 
-				if (value == null)
+				if (value is null)
 					throw new ArgumentNullException (nameof (value));
 
 				if (list[index] == value)
@@ -249,7 +247,7 @@ namespace MimeKit {
 		/// </exception>
 		public void Add (InternetAddress address)
 		{
-			if (address == null)
+			if (address is null)
 				throw new ArgumentNullException (nameof (address));
 
 			address.Changed += AddressChanged;
@@ -269,7 +267,7 @@ namespace MimeKit {
 		/// </exception>
 		public void AddRange (IEnumerable<InternetAddress> addresses)
 		{
-			if (addresses == null)
+			if (addresses is null)
 				throw new ArgumentNullException (nameof (addresses));
 
 			bool changed = false;
@@ -316,7 +314,7 @@ namespace MimeKit {
 		/// </exception>
 		public bool Contains (InternetAddress address)
 		{
-			if (address == null)
+			if (address is null)
 				throw new ArgumentNullException (nameof (address));
 
 			return list.Contains (address);
@@ -355,7 +353,7 @@ namespace MimeKit {
 		/// </exception>
 		public bool Remove (InternetAddress address)
 		{
-			if (address == null)
+			if (address is null)
 				throw new ArgumentNullException (nameof (address));
 
 			if (list.Remove (address)) {
@@ -414,7 +412,7 @@ namespace MimeKit {
 		/// <see cref="InternetAddressList"/>; otherwise, <c>false</c>.</returns>
 		public bool Equals (InternetAddressList other)
 		{
-			if (other == null)
+			if (other is null)
 				return false;
 
 			if (other.Count != Count)
@@ -447,7 +445,7 @@ namespace MimeKit {
 		{
 			int rv;
 
-			if (other == null)
+			if (other is null)
 				throw new ArgumentNullException (nameof (other));
 
 			for (int i = 0; i < Math.Min (Count, other.Count); i++) {
@@ -562,8 +560,7 @@ namespace MimeKit {
 
 		void OnChanged ()
 		{
-			if (Changed != null)
-				Changed (this, EventArgs.Empty);
+			Changed?.Invoke (this, EventArgs.Empty);
 		}
 
 		void AddressChanged (object sender, EventArgs e)
@@ -571,11 +568,10 @@ namespace MimeKit {
 			OnChanged ();
 		}
 
-		internal static bool TryParse (ParserOptions options, byte[] text, ref int index, int endIndex, bool isGroup, int groupDepth, bool throwOnError, out List<InternetAddress> addresses)
+		internal static bool TryParse (AddressParserFlags flags, ParserOptions options, byte[] text, ref int index, int endIndex, bool isGroup, int groupDepth, out List<InternetAddress> addresses)
 		{
-			var flags = throwOnError ? InternetAddress.AddressParserFlags.Parse : InternetAddress.AddressParserFlags.TryParse;
+			bool throwOnError = (flags & AddressParserFlags.ThrowOnError) != 0;
 			var list = new List<InternetAddress> ();
-			InternetAddress address;
 
 			addresses = null;
 
@@ -593,7 +589,12 @@ namespace MimeKit {
 				if (isGroup && text[index] == (byte) ';')
 					break;
 
-				if (!InternetAddress.TryParse (options, text, ref index, endIndex, groupDepth, flags, out address)) {
+				if (!InternetAddress.TryParse (flags, options, text, ref index, endIndex, groupDepth, out var address)) {
+					if ((flags & AddressParserFlags.Internal) == 0) {
+						// Note: If flags contains the ThrowOnError flag, then InternetAddress.TryParse() would have thrown.
+						return false;
+					}
+
 					// skip this address...
 					while (index < endIndex && text[index] != (byte) ',' && (!isGroup || text[index] != (byte) ';'))
 						index++;
@@ -644,10 +645,9 @@ namespace MimeKit {
 		{
 			ParseUtils.ValidateArguments (options, buffer, startIndex, length);
 
-			List<InternetAddress> addrlist;
 			int index = startIndex;
 
-			if (!TryParse (options, buffer, ref index, startIndex + length, false, 0, false, out addrlist)) {
+			if (!TryParse (AddressParserFlags.TryParse, options, buffer, ref index, startIndex + length, false, 0, out var addrlist)) {
 				addresses = null;
 				return false;
 			}
@@ -704,10 +704,9 @@ namespace MimeKit {
 		{
 			ParseUtils.ValidateArguments (options, buffer, startIndex);
 
-			List<InternetAddress> addrlist;
 			int index = startIndex;
 
-			if (!TryParse (options, buffer, ref index, buffer.Length, false, 0, false, out addrlist)) {
+			if (!TryParse (AddressParserFlags.TryParse, options, buffer, ref index, buffer.Length, false, 0, out var addrlist)) {
 				addresses = null;
 				return false;
 			}
@@ -757,10 +756,9 @@ namespace MimeKit {
 		{
 			ParseUtils.ValidateArguments (options, buffer);
 
-			List<InternetAddress> addrlist;
 			int index = 0;
 
-			if (!TryParse (options, buffer, ref index, buffer.Length, false, 0, false, out addrlist)) {
+			if (!TryParse (AddressParserFlags.TryParse, options, buffer, ref index, buffer.Length, false, 0, out var addrlist)) {
 				addresses = null;
 				return false;
 			}
@@ -807,10 +805,9 @@ namespace MimeKit {
 			ParseUtils.ValidateArguments (options, text);
 
 			var buffer = Encoding.UTF8.GetBytes (text);
-			List<InternetAddress> addrlist;
 			int index = 0;
 
-			if (!TryParse (options, buffer, ref index, buffer.Length, false, 0, false, out addrlist)) {
+			if (!TryParse (AddressParserFlags.TryParse, options, buffer, ref index, buffer.Length, false, 0, out var addrlist)) {
 				addresses = null;
 				return false;
 			}
@@ -865,10 +862,9 @@ namespace MimeKit {
 		{
 			ParseUtils.ValidateArguments (options, buffer, startIndex, length);
 
-			List<InternetAddress> addrlist;
 			int index = startIndex;
 
-			TryParse (options, buffer, ref index, startIndex + length, false, 0, true, out addrlist);
+			TryParse (AddressParserFlags.Parse, options, buffer, ref index, startIndex + length, false, 0, out var addrlist);
 
 			return new InternetAddressList (addrlist);
 		}
@@ -924,10 +920,9 @@ namespace MimeKit {
 		{
 			ParseUtils.ValidateArguments (options, buffer, startIndex);
 
-			List<InternetAddress> addrlist;
 			int index = startIndex;
 
-			TryParse (options, buffer, ref index, buffer.Length, false, 0, true, out addrlist);
+			TryParse (AddressParserFlags.Parse, options, buffer, ref index, buffer.Length, false, 0, out var addrlist);
 
 			return new InternetAddressList (addrlist);
 		}
@@ -976,10 +971,9 @@ namespace MimeKit {
 		{
 			ParseUtils.ValidateArguments (options, buffer);
 
-			List<InternetAddress> addrlist;
 			int index = 0;
 
-			TryParse (options, buffer, ref index, buffer.Length, false, 0, true, out addrlist);
+			TryParse (AddressParserFlags.Parse, options, buffer, ref index, buffer.Length, false, 0, out var addrlist);
 
 			return new InternetAddressList (addrlist);
 		}
@@ -1025,10 +1019,9 @@ namespace MimeKit {
 			ParseUtils.ValidateArguments (options, text);
 
 			var buffer = Encoding.UTF8.GetBytes (text);
-			List<InternetAddress> addrlist;
 			int index = 0;
 
-			TryParse (options, buffer, ref index, buffer.Length, false, 0, true, out addrlist);
+			TryParse (AddressParserFlags.Parse, options, buffer, ref index, buffer.Length, false, 0, out var addrlist);
 
 			return new InternetAddressList (addrlist);
 		}
@@ -1068,7 +1061,7 @@ namespace MimeKit {
 		/// </exception>
 		public static explicit operator MailAddressCollection (InternetAddressList addresses)
 		{
-			if (addresses == null)
+			if (addresses is null)
 				return null;
 
 			var collection = new MailAddressCollection ();
@@ -1096,7 +1089,7 @@ namespace MimeKit {
 		/// <param name="addresses">The mail address.</param>
 		public static explicit operator InternetAddressList (MailAddressCollection addresses)
 		{
-			if (addresses == null)
+			if (addresses is null)
 				return null;
 
 			var list = new InternetAddressList ();

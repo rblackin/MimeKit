@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -29,7 +29,6 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
-using System.Globalization;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 
@@ -233,13 +232,12 @@ namespace MimeKit.Cryptography {
 			return (long) (DateTime.UtcNow - DateUtils.UnixEpoch).TotalSeconds;
 		}
 
-		StringBuilder CreateArcHeaderBuilder (int instance)
+		static void AppendInstanceAndSignatureAlgorithm (ref ValueStringBuilder value, int instance, DkimSignatureAlgorithm signatureAlgorithm)
 		{
-			var value = new StringBuilder ();
+			value.Append ("i=");
+			value.AppendInvariant (instance);
 
-			value.AppendFormat ("i={0}", instance.ToString (CultureInfo.InvariantCulture));
-
-			switch (SignatureAlgorithm) {
+			switch (signatureAlgorithm) {
 			case DkimSignatureAlgorithm.Ed25519Sha256:
 				value.Append ("; a=ed25519-sha256");
 				break;
@@ -250,21 +248,26 @@ namespace MimeKit.Cryptography {
 				value.Append ("; a=rsa-sha1");
 				break;
 			}
-
-			return value;
 		}
 
 		Header GenerateArcMessageSignature (FormatOptions options, MimeMessage message, int instance, long t, IList<string> headers)
 		{
-			var value = CreateArcHeaderBuilder (instance);
+			var builder = new ValueStringBuilder (256);
 			byte[] signature, hash;
 			Header ams;
 
-			value.AppendFormat ("; d={0}; s={1}", Domain, Selector);
-			value.AppendFormat ("; c={0}/{1}",
-				HeaderCanonicalizationAlgorithm.ToString ().ToLowerInvariant (),
-				BodyCanonicalizationAlgorithm.ToString ().ToLowerInvariant ());
-			value.AppendFormat ("; t={0}", t);
+			AppendInstanceAndSignatureAlgorithm (ref builder, instance, SignatureAlgorithm);
+
+			builder.Append ("; d=");
+			builder.Append (Domain);
+			builder.Append ("; s="); 
+			builder.Append (Selector);
+			builder.Append ("; c=");
+			builder.Append (HeaderCanonicalizationAlgorithm.ToString ().ToLowerInvariant ());
+			builder.Append ('/');
+			builder.Append (BodyCanonicalizationAlgorithm.ToString ().ToLowerInvariant ());
+			builder.Append ("; t=");
+			builder.AppendInvariant (t);
 
 			using (var stream = new DkimSignatureStream (CreateSigningContext ())) {
 				using (var filtered = new FilteredStream (stream)) {
@@ -273,13 +276,15 @@ namespace MimeKit.Cryptography {
 					// write the specified message headers
 					DkimVerifierBase.WriteHeaders (options, message, headers, HeaderCanonicalizationAlgorithm, filtered);
 
-					value.AppendFormat ("; h={0}", string.Join (":", headers.ToArray ()));
+					builder.Append ("; h="); 
+					builder.AppendJoin (':', headers);
 
 					hash = message.HashBody (options, SignatureAlgorithm, BodyCanonicalizationAlgorithm, -1);
-					value.AppendFormat ("; bh={0}", Convert.ToBase64String (hash));
-					value.Append ("; b=");
+					builder.Append ("; bh="); 
+					builder.Append (Convert.ToBase64String (hash));
+					builder.Append ("; b=");
 
-					ams = new Header (HeaderId.ArcMessageSignature, value.ToString ());
+					ams = new Header (HeaderId.ArcMessageSignature, builder.ToString ());
 
 					switch (HeaderCanonicalizationAlgorithm) {
 					case DkimCanonicalizationAlgorithm.Relaxed:
@@ -303,14 +308,20 @@ namespace MimeKit.Cryptography {
 
 		Header GenerateArcSeal (FormatOptions options, int instance, string cv, long t, ArcHeaderSet[] sets, int count, Header aar, Header ams)
 		{
-			var value = CreateArcHeaderBuilder (instance);
+			var builder = new ValueStringBuilder (256);
 			byte[] signature;
 			Header seal;
 
-			value.AppendFormat ("; cv={0}", cv);
+			AppendInstanceAndSignatureAlgorithm (ref builder, instance, SignatureAlgorithm);
 
-			value.AppendFormat ("; d={0}; s={1}", Domain, Selector);
-			value.AppendFormat ("; t={0}", t);
+			builder.Append ("; cv=");
+			builder.Append (cv);
+			builder.Append ("; d=");
+			builder.Append (Domain);
+			builder.Append ("; s=");
+			builder.Append (Selector);
+			builder.Append ("; t=");
+			builder.AppendInvariant (t);
 
 			using (var stream = new DkimSignatureStream (CreateSigningContext ())) {
 				using (var filtered = new FilteredStream (stream)) {
@@ -325,9 +336,9 @@ namespace MimeKit.Cryptography {
 					DkimVerifierBase.WriteHeaderRelaxed (options, filtered, aar, false);
 					DkimVerifierBase.WriteHeaderRelaxed (options, filtered, ams, false);
 
-					value.Append ("; b=");
+					builder.Append ("; b=");
 
-					seal = new Header (HeaderId.ArcSeal, value.ToString ());
+					seal = new Header (HeaderId.ArcSeal, builder.ToString ());
 					DkimVerifierBase.WriteHeaderRelaxed (options, filtered, seal, true);
 
 					filtered.Flush ();
@@ -487,7 +498,7 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.FormatException">
 		/// One or more ARC headers either did not contain an instance tag or the instance tag was invalid.
 		/// </exception>
-		public void Sign (FormatOptions options, MimeMessage message, IList<string> headers, CancellationToken cancellationToken = default (CancellationToken))
+		public void Sign (FormatOptions options, MimeMessage message, IList<string> headers, CancellationToken cancellationToken = default)
 		{
 			SignAsync (options, message, headers, false, cancellationToken).GetAwaiter ().GetResult ();
 		}
@@ -522,7 +533,7 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.FormatException">
 		/// One or more ARC headers either did not contain an instance tag or the instance tag was invalid.
 		/// </exception>
-		public Task SignAsync (FormatOptions options, MimeMessage message, IList<string> headers, CancellationToken cancellationToken = default (CancellationToken))
+		public Task SignAsync (FormatOptions options, MimeMessage message, IList<string> headers, CancellationToken cancellationToken = default)
 		{
 			return SignAsync (options, message, headers, true, cancellationToken);
 		}
@@ -553,7 +564,7 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.FormatException">
 		/// One or more ARC headers either did not contain an instance tag or the instance tag was invalid.
 		/// </exception>
-		public void Sign (MimeMessage message, IList<string> headers, CancellationToken cancellationToken = default (CancellationToken))
+		public void Sign (MimeMessage message, IList<string> headers, CancellationToken cancellationToken = default)
 		{
 			Sign (FormatOptions.Default, message, headers, cancellationToken);
 		}
@@ -585,7 +596,7 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.FormatException">
 		/// One or more ARC headers either did not contain an instance tag or the instance tag was invalid.
 		/// </exception>
-		public Task SignAsync (MimeMessage message, IList<string> headers, CancellationToken cancellationToken = default (CancellationToken))
+		public Task SignAsync (MimeMessage message, IList<string> headers, CancellationToken cancellationToken = default)
 		{
 			return SignAsync (FormatOptions.Default, message, headers, cancellationToken);
 		}
@@ -619,7 +630,7 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.FormatException">
 		/// One or more ARC headers either did not contain an instance tag or the instance tag was invalid.
 		/// </exception>
-		public void Sign (FormatOptions options, MimeMessage message, IList<HeaderId> headers, CancellationToken cancellationToken = default (CancellationToken))
+		public void Sign (FormatOptions options, MimeMessage message, IList<HeaderId> headers, CancellationToken cancellationToken = default)
 		{
 			SignAsync (options, message, headers, false, cancellationToken).GetAwaiter ().GetResult ();
 		}
@@ -654,7 +665,7 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.FormatException">
 		/// One or more ARC headers either did not contain an instance tag or the instance tag was invalid.
 		/// </exception>
-		public Task SignAsync (FormatOptions options, MimeMessage message, IList<HeaderId> headers, CancellationToken cancellationToken = default (CancellationToken))
+		public Task SignAsync (FormatOptions options, MimeMessage message, IList<HeaderId> headers, CancellationToken cancellationToken = default)
 		{
 			return SignAsync (options, message, headers, true, cancellationToken);
 		}
@@ -685,7 +696,7 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.FormatException">
 		/// One or more ARC headers either did not contain an instance tag or the instance tag was invalid.
 		/// </exception>
-		public void Sign (MimeMessage message, IList<HeaderId> headers, CancellationToken cancellationToken = default (CancellationToken))
+		public void Sign (MimeMessage message, IList<HeaderId> headers, CancellationToken cancellationToken = default)
 		{
 			Sign (FormatOptions.Default, message, headers, cancellationToken);
 		}
@@ -717,7 +728,7 @@ namespace MimeKit.Cryptography {
 		/// <exception cref="System.FormatException">
 		/// One or more ARC headers either did not contain an instance tag or the instance tag was invalid.
 		/// </exception>
-		public Task SignAsync (MimeMessage message, IList<HeaderId> headers, CancellationToken cancellationToken = default (CancellationToken))
+		public Task SignAsync (MimeMessage message, IList<HeaderId> headers, CancellationToken cancellationToken = default)
 		{
 			return SignAsync (FormatOptions.Default, message, headers, cancellationToken);
 		}

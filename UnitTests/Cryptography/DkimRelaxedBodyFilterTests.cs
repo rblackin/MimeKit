@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,17 +24,8 @@
 // THE SOFTWARE.
 //
 
-using System;
-using System.IO;
 using System.Text;
-using System.Threading;
 
-using NUnit.Framework;
-
-using Org.BouncyCastle.Crypto;
-using Org.BouncyCastle.OpenSsl;
-
-using MimeKit;
 using MimeKit.Cryptography;
 
 namespace UnitTests.Cryptography {
@@ -55,7 +46,7 @@ namespace UnitTests.Cryptography {
 			output = filter.Flush (input, 0, input.Length, out outputIndex, out outputLength);
 			actual = Encoding.ASCII.GetString (output, outputIndex, outputLength);
 
-			Assert.AreEqual (expected, actual);
+			Assert.That (actual, Is.EqualTo (expected));
 
 			filter.Reset ();
 		}
@@ -74,7 +65,7 @@ namespace UnitTests.Cryptography {
 			output = filter.Flush (input, 0, input.Length, out outputIndex, out outputLength);
 			actual = Encoding.ASCII.GetString (output, outputIndex, outputLength);
 
-			Assert.AreEqual (expected, actual);
+			Assert.That (actual, Is.EqualTo (expected));
 
 			filter.Reset ();
 		}
@@ -93,7 +84,7 @@ namespace UnitTests.Cryptography {
 			output = filter.Flush (input, 0, input.Length, out outputIndex, out outputLength);
 			actual = Encoding.ASCII.GetString (output, outputIndex, outputLength);
 
-			Assert.AreEqual (expected, actual);
+			Assert.That (actual, Is.EqualTo (expected));
 
 			filter.Reset ();
 		}
@@ -112,7 +103,7 @@ namespace UnitTests.Cryptography {
 			output = filter.Flush (input, 0, input.Length, out outputIndex, out outputLength);
 			actual = Encoding.ASCII.GetString (output, outputIndex, outputLength);
 
-			Assert.AreEqual (expected, actual);
+			Assert.That (actual, Is.EqualTo (expected));
 
 			filter.Reset ();
 		}

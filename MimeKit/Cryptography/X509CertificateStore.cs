@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -34,6 +34,7 @@ using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Pkcs;
 using Org.BouncyCastle.X509;
 using Org.BouncyCastle.X509.Store;
+using Org.BouncyCastle.Utilities.Collections;
 
 namespace MimeKit.Cryptography {
 	/// <summary>
@@ -42,7 +43,7 @@ namespace MimeKit.Cryptography {
 	/// <remarks>
 	/// A store for X.509 certificates and keys.
 	/// </remarks>
-	public class X509CertificateStore : IX509Store
+	public class X509CertificateStore : IStore<X509Certificate>
 	{
 		readonly Dictionary<X509Certificate, AsymmetricKeyParameter> keys;
 		readonly HashSet<X509Certificate> unique;
@@ -82,9 +83,7 @@ namespace MimeKit.Cryptography {
 		/// <param name="certificate">The certificate.</param>
 		public AsymmetricKeyParameter GetPrivateKey (X509Certificate certificate)
 		{
-			AsymmetricKeyParameter key;
-
-			if (!keys.TryGetValue (certificate, out key))
+			if (!keys.TryGetValue (certificate, out var key))
 				return null;
 
 			return key;
@@ -264,7 +263,8 @@ namespace MimeKit.Cryptography {
 			if (password == null)
 				throw new ArgumentNullException (nameof (password));
 
-			var pkcs12 = new Pkcs12Store (stream, password.ToCharArray ());
+			var pkcs12 = new Pkcs12StoreBuilder ().Build ();
+			pkcs12.Load (stream, password.ToCharArray ());
 
 			foreach (string alias in pkcs12.Aliases) {
 				if (pkcs12.IsKeyEntry (alias)) {
@@ -427,7 +427,8 @@ namespace MimeKit.Cryptography {
 			if (password == null)
 				throw new ArgumentNullException (nameof (password));
 
-			var store = new Pkcs12Store ();
+			var store = new Pkcs12StoreBuilder ().Build ();
+
 			foreach (var certificate in certs) {
 				if (keys.ContainsKey (certificate))
 					continue;
@@ -450,9 +451,9 @@ namespace MimeKit.Cryptography {
 
 				var entry = new AsymmetricKeyEntry (kvp.Value);
 				var cert = new X509CertificateEntry (kvp.Key);
-				var chain = new List<X509CertificateEntry> ();
-
-				chain.Add (cert);
+				var chain = new List<X509CertificateEntry> {
+					cert
+				};
 
 				store.SetKeyEntry (alias, entry, chain.ToArray ());
 			}
@@ -509,7 +510,7 @@ namespace MimeKit.Cryptography {
 		/// </remarks>
 		/// <returns>The matching certificates.</returns>
 		/// <param name="selector">The match criteria.</param>
-		public IEnumerable<X509Certificate> GetMatches (IX509Selector selector)
+		public IEnumerable<X509Certificate> GetMatches (ISelector<X509Certificate> selector)
 		{
 			foreach (var certificate in certs) {
 				if (selector == null || selector.Match (certificate))
@@ -529,7 +530,7 @@ namespace MimeKit.Cryptography {
 		/// </remarks>
 		/// <returns>The matching certificates.</returns>
 		/// <param name="selector">The match criteria.</param>
-		ICollection IX509Store.GetMatches (IX509Selector selector)
+		IEnumerable<X509Certificate> IStore<X509Certificate>.EnumerateMatches (ISelector<X509Certificate> selector)
 		{
 			var matches = new List<X509Certificate> ();
 

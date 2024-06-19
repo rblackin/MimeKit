@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -103,7 +103,7 @@ namespace MimeKit.Text {
 		}
 
 		/// <summary>
-		/// Converts the tag name into the equivalent tag id.
+		/// Convert the tag name into the equivalent tag id.
 		/// </summary>
 		/// <remarks>
 		/// Converts the tag name into the equivalent tag id.
@@ -112,7 +112,7 @@ namespace MimeKit.Text {
 		/// <param name="ns">The namespace.</param>
 		public static HtmlNamespace ToHtmlNamespace (this string ns)
 		{
-			if (ns == null)
+			if (ns is null)
 				throw new ArgumentNullException (nameof (ns));
 
 			if (!ns.StartsWith ("http://www.w3.org/", StringComparison.OrdinalIgnoreCase))

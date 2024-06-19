@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -56,9 +56,7 @@ namespace MimeKit.Encodings {
 		/// <remarks>
 		/// Creates a new quoted-printable decoder.
 		/// </remarks>
-		/// <param name="rfc2047">
-		/// <c>true</c> if this decoder will be used to decode rfc2047 encoded-word payloads; <c>false</c> otherwise.
-		/// </param>
+		/// <param name="rfc2047"><c>true</c> if this decoder will be used to decode rfc2047 encoded-word tokens; otherwise, <c>false</c>.</param>
 		public QuotedPrintableDecoder (bool rfc2047)
 		{
 			this.rfc2047 = rfc2047;
@@ -83,16 +81,14 @@ namespace MimeKit.Encodings {
 		/// <returns>A new <see cref="QuotedPrintableDecoder"/> with identical state.</returns>
 		public IMimeDecoder Clone ()
 		{
-			var decoder = new QuotedPrintableDecoder (rfc2047);
-
-			decoder.state = state;
-			decoder.saved = saved;
-
-			return decoder;
+			return new QuotedPrintableDecoder (rfc2047) {
+				state = state,
+				saved = saved
+			};
 		}
 
 		/// <summary>
-		/// Gets the encoding.
+		/// Get the encoding.
 		/// </summary>
 		/// <remarks>
 		/// Gets the encoding that the decoder supports.
@@ -103,7 +99,7 @@ namespace MimeKit.Encodings {
 		}
 
 		/// <summary>
-		/// Estimates the length of the output.
+		/// Estimate the length of the output.
 		/// </summary>
 		/// <remarks>
 		/// Estimates the number of bytes needed to decode the specified number of input bytes.
@@ -112,13 +108,16 @@ namespace MimeKit.Encodings {
 		/// <param name="inputLength">The input length.</param>
 		public int EstimateOutputLength (int inputLength)
 		{
-			// add an extra 3 bytes for the saved input byte from previous decode step (in case it is invalid hex)
-			return inputLength + 3;
+			switch (state) {
+			case QpDecoderState.PassThrough: return inputLength;
+			case QpDecoderState.EqualSign: return inputLength + 1; // add an extra byte in case the '=' character is not the start of a valid hex sequence
+			default: return inputLength + 2; // add an extra 2 bytes in case the =X sequence is not the start of a valid hex sequence
+			}
 		}
 
 		void ValidateArguments (byte[] input, int startIndex, int length, byte[] output)
 		{
-			if (input == null)
+			if (input is null)
 				throw new ArgumentNullException (nameof (input));
 
 			if (startIndex < 0 || startIndex > input.Length)
@@ -127,7 +126,7 @@ namespace MimeKit.Encodings {
 			if (length < 0 || length > (input.Length - startIndex))
 				throw new ArgumentOutOfRangeException (nameof (length));
 
-			if (output == null)
+			if (output is null)
 				throw new ArgumentNullException (nameof (output));
 
 			if (output.Length < EstimateOutputLength (length))
@@ -135,7 +134,7 @@ namespace MimeKit.Encodings {
 		}
 
 		/// <summary>
-		/// Decodes the specified input into the output buffer.
+		/// Decode the specified input into the output buffer.
 		/// </summary>
 		/// <remarks>
 		/// <para>Decodes the specified input into the output buffer.</para>
@@ -224,7 +223,7 @@ namespace MimeKit.Encodings {
 		}
 
 		/// <summary>
-		/// Decodes the specified input into the output buffer.
+		/// Decode the specified input into the output buffer.
 		/// </summary>
 		/// <remarks>
 		/// <para>Decodes the specified input into the output buffer.</para>
@@ -263,7 +262,7 @@ namespace MimeKit.Encodings {
 		}
 
 		/// <summary>
-		/// Resets the decoder.
+		/// Reset the decoder.
 		/// </summary>
 		/// <remarks>
 		/// Resets the state of the decoder.

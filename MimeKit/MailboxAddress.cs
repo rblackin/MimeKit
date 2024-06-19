@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -34,6 +34,7 @@ using System.Net.Mail;
 #endif
 
 using MimeKit.Utils;
+using MimeKit.Encodings;
 
 namespace MimeKit {
 	/// <summary>
@@ -45,8 +46,24 @@ namespace MimeKit {
 	/// </remarks>
 	public class MailboxAddress : InternetAddress
 	{
+		static readonly byte[] EmptySentinels = Array.Empty<byte> ();
+
+		/// <summary>
+		/// Get or set the punycode implementation that should be used for encoding and decoding mailbox addresses.
+		/// </summary>
+		/// <remarks>
+		/// Gets or sets the punycode implementation that should be used for encoding and decoding mailbox addresses.
+		/// </remarks>
+		/// <value>The punycode implementation.</value>
+		public static IPunycode IdnMapping { get; set; }
+
 		string address;
 		int at;
+
+		static MailboxAddress ()
+		{
+			IdnMapping = new Punycode ();
+		}
 
 		internal MailboxAddress (Encoding encoding, string name, IEnumerable<string> route, string address, int at) : base (encoding, name)
 		{
@@ -89,7 +106,7 @@ namespace MimeKit {
 		/// </exception>
 		public MailboxAddress (Encoding encoding, string name, IEnumerable<string> route, string address) : base (encoding, name)
 		{
-			if (address == null)
+			if (address is null)
 				throw new ArgumentNullException (nameof (address));
 
 			Route = new DomainList (route);
@@ -122,27 +139,6 @@ namespace MimeKit {
 		/// Initialize a new instance of the <see cref="MailboxAddress"/> class.
 		/// </summary>
 		/// <remarks>
-		/// Creates a new <see cref="MailboxAddress"/> with the specified address and route.
-		/// </remarks>
-		/// <param name="route">The route of the mailbox.</param>
-		/// <param name="address">The address of the mailbox.</param>
-		/// <exception cref="System.ArgumentNullException">
-		/// <para><paramref name="route"/> is <c>null</c>.</para>
-		/// <para>-or-</para>
-		/// <para><paramref name="address"/> is <c>null</c>.</para>
-		/// </exception>
-		/// <exception cref="ParseException">
-		/// <paramref name="address"/> is malformed.
-		/// </exception>
-		[Obsolete ("This constructor will be going away. Use new MailboxAddress(string name, IEnumerable<string> route, string address) instead.")]
-		public MailboxAddress (IEnumerable<string> route, string address) : this (Encoding.UTF8, null, route, address)
-		{
-		}
-
-		/// <summary>
-		/// Initialize a new instance of the <see cref="MailboxAddress"/> class.
-		/// </summary>
-		/// <remarks>
 		/// Creates a new <see cref="MailboxAddress"/> with the specified name and address. The
 		/// specified text encoding is used when encoding the name according to the rules of rfc2047.
 		/// </remarks>
@@ -159,7 +155,7 @@ namespace MimeKit {
 		/// </exception>
 		public MailboxAddress (Encoding encoding, string name, string address) : base (encoding, name)
 		{
-			if (address == null)
+			if (address is null)
 				throw new ArgumentNullException (nameof (address));
 
 			Route = new DomainList ();
@@ -186,30 +182,6 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Initialize a new instance of the <see cref="MailboxAddress"/> class.
-		/// </summary>
-		/// <remarks>
-		/// <para>Creates a new <see cref="MailboxAddress"/> with the specified address.</para>
-		/// <note type="note">
-		/// <para>The <paramref name="address"/> must be in the form <c>user@example.com</c>.</para>
-		/// <para>This method cannot be used to parse a free-form email address that includes
-		/// the name or encloses the address in angle brackets.</para>
-		/// <para>To parse a free-form email address, use <see cref="Parse(string)"/> instead.</para>
-		/// </note>
-		/// </remarks>
-		/// <param name="address">The address of the mailbox.</param>
-		/// <exception cref="System.ArgumentNullException">
-		/// <paramref name="address"/> is <c>null</c>.
-		/// </exception>
-		/// <exception cref="ParseException">
-		/// <paramref name="address"/> is malformed.
-		/// </exception>
-		[Obsolete("This constructor will be going away due to it causing too much confusion. Use new MailboxAddress(string name, string address) or MailboxAddress.Parse(string) instead.")]
-		public MailboxAddress (string address) : this (Encoding.UTF8, null, address)
-		{
-		}
-
-		/// <summary>
 		/// Clone the mailbox address.
 		/// </summary>
 		/// <remarks>
@@ -222,7 +194,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets the mailbox route.
+		/// Get the mailbox route.
 		/// </summary>
 		/// <remarks>
 		/// A route is convention that is rarely seen in modern email systems, but is supported
@@ -234,7 +206,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets or sets the mailbox address.
+		/// Get or set the mailbox address.
 		/// </summary>
 		/// <remarks>
 		/// Represents the actual email address and is in the form of <c>user@domain.com</c>.
@@ -249,20 +221,23 @@ namespace MimeKit {
 		public string Address {
 			get { return address; }
 			set {
-				if (value == null)
+				if (value is null)
 					throw new ArgumentNullException (nameof (value));
 
 				if (value == address)
 					return;
 
 				if (value.Length > 0) {
+					var compliance = ParserOptions.Default.AddressParserComplianceMode;
 					var buffer = CharsetUtils.UTF8.GetBytes (value);
 					int index = 0;
 
-					TryParseAddrspec (buffer, ref index, buffer.Length, new byte[0], true, out string addrspec, out int atIndex);
+					TryParseAddrspec (buffer, ref index, buffer.Length, EmptySentinels, compliance, true, out string addrspec, out int atIndex);
+
+					ParseUtils.SkipCommentsAndWhiteSpace (buffer, ref index, buffer.Length, false);
 
 					if (index != buffer.Length)
-						throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Unexpected token at offset {0}", index), index, index);
+						throw new ParseException (string.Format (CultureInfo.InvariantCulture, "Unexpected '{0}' token at offset {1}", (char) buffer[index], index), index, index);
 
 					address = addrspec;
 					at = atIndex;
@@ -276,7 +251,33 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Gets whether or not the address is an international address.
+		/// Get the local-part of the email address.
+		/// </summary>
+		/// <remarks>
+		/// Gets the local-part of the email address, sometimes referred to as the "user" portion of an email address.
+		/// </remarks>
+		/// <value>The local-part portion of the mailbox address.</value>
+		public string LocalPart {
+			get {
+				return at != -1 ? address.Substring (0, at) : address;
+			}
+		}
+
+		/// <summary>
+		/// Get the domain of the email address.
+		/// </summary>
+		/// <remarks>
+		/// Gets the domain of the email address.
+		/// </remarks>
+		/// <value>The domain portion of the mailbox address.</value>
+		public string Domain {
+			get {
+				return at != -1 ? address.Substring (at + 1) : string.Empty;
+			}
+		}
+
+		/// <summary>
+		/// Get whether or not the address is an international address.
 		/// </summary>
 		/// <remarks>
 		/// <para>International addresses are addresses that contain international
@@ -287,7 +288,7 @@ namespace MimeKit {
 		/// <value><c>true</c> if the address is an international address; otherwise, <c>false</c>.</value>
 		public bool IsInternational {
 			get {
-				if (address == null)
+				if (string.IsNullOrEmpty (address))
 					return false;
 
 				if (ParseUtils.IsInternational (address))
@@ -305,14 +306,18 @@ namespace MimeKit {
 		static string EncodeAddrspec (string addrspec, int at)
 		{
 			if (at != -1) {
-				var domain = addrspec.Substring (at + 1);
+				var domainEncoded = ParseUtils.IsInternational (addrspec, at + 1);
+
+				if (!domainEncoded)
+					return addrspec;
+
 				var local = addrspec.Substring (0, at);
+				string domain;
 
-				if (ParseUtils.IsInternational (local))
-					local = ParseUtils.IdnEncode (local);
-
-				if (ParseUtils.IsInternational (domain))
-					domain = ParseUtils.IdnEncode (domain);
+				if (domainEncoded)
+					domain = IdnMapping.Encode (addrspec, at + 1);
+				else
+					domain = addrspec.Substring (at + 1);
 
 				return local + "@" + domain;
 			}
@@ -333,7 +338,7 @@ namespace MimeKit {
 		/// </exception>
 		public static string EncodeAddrspec (string addrspec)
 		{
-			if (addrspec == null)
+			if (addrspec is null)
 				throw new ArgumentNullException (nameof (addrspec));
 
 			if (addrspec.Length == 0)
@@ -342,28 +347,10 @@ namespace MimeKit {
 			var buffer = CharsetUtils.UTF8.GetBytes (addrspec);
 			int index = 0;
 
-			if (!TryParseAddrspec (buffer, ref index, buffer.Length, new byte[0], false, out string address, out int at))
+			if (!TryParseAddrspec (buffer, ref index, buffer.Length, EmptySentinels, RfcComplianceMode.Looser, false, out string address, out int at))
 				return addrspec;
 
 			return EncodeAddrspec (address, at);
-		}
-
-		static string DecodeAddrspec (string addrspec, int at)
-		{
-			if (at != -1) {
-				var domain = addrspec.Substring (at + 1);
-				var local = addrspec.Substring (0, at);
-
-				if (ParseUtils.IsIdnEncoded (local))
-					local = ParseUtils.IdnDecode (local);
-
-				if (ParseUtils.IsIdnEncoded (domain))
-					domain = ParseUtils.IdnDecode (domain);
-
-				return local + "@" + domain;
-			}
-
-			return addrspec;
 		}
 
 		/// <summary>
@@ -379,7 +366,7 @@ namespace MimeKit {
 		/// </exception>
 		public static string DecodeAddrspec (string addrspec)
 		{
-			if (addrspec == null)
+			if (addrspec is null)
 				throw new ArgumentNullException (nameof (addrspec));
 
 			if (addrspec.Length == 0)
@@ -388,10 +375,11 @@ namespace MimeKit {
 			var buffer = CharsetUtils.UTF8.GetBytes (addrspec);
 			int index = 0;
 
-			if (!TryParseAddrspec (buffer, ref index, buffer.Length, new byte[0], false, out string address, out int at))
+			// Note: The parsed address will be IDN-decoded.
+			if (!TryParseAddrspec (buffer, ref index, buffer.Length, EmptySentinels, RfcComplianceMode.Looser, false, out string address, out _))
 				return addrspec;
 
-			return DecodeAddrspec (address, at);
+			return address;
 		}
 
 		/// <summary>
@@ -403,12 +391,13 @@ namespace MimeKit {
 		/// <param name="idnEncode"><c>true</c> if the address should be encoded according to IDN encoding rules; otherwise, <c>false</c>.</param>
 		/// <returns>The mailbox address.</returns>
 		public string GetAddress (bool idnEncode)
-        {
+		{
 			if (idnEncode)
 				return EncodeAddrspec (address, at);
 
-			return DecodeAddrspec (address, at);
-        }
+			// Note: The address is *always* in its decoded form.
+			return address;
+		}
 
 		internal override void Encode (FormatOptions options, StringBuilder builder, bool firstToken, ref int lineLength)
 		{
@@ -422,8 +411,7 @@ namespace MimeKit {
 				string name;
 
 				if (!options.International) {
-					var encoded = Rfc2047.EncodePhrase (options, Encoding, Name);
-					name = Encoding.ASCII.GetString (encoded, 0, encoded.Length);
+					name = Rfc2047.EncodePhraseAsString (options, Encoding, Name);
 				} else {
 					name = EncodeInternationalizedPhrase (Name);
 				}
@@ -492,7 +480,7 @@ namespace MimeKit {
 		}
 
 		/// <summary>
-		/// Returns a string representation of the <see cref="MailboxAddress"/>,
+		/// Return a string representation of the <see cref="MailboxAddress"/>,
 		/// optionally encoding it for transport.
 		/// </summary>
 		/// <remarks>
@@ -509,7 +497,7 @@ namespace MimeKit {
 		/// </exception>
 		public override string ToString (FormatOptions options, bool encode)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
 			if (encode) {
@@ -537,7 +525,7 @@ namespace MimeKit {
 		#region IEquatable implementation
 
 		/// <summary>
-		/// Determines whether the specified <see cref="MailboxAddress"/> is equal to the current <see cref="MailboxAddress"/>.
+		/// Determine whether the specified <see cref="MailboxAddress"/> is equal to the current <see cref="MailboxAddress"/>.
 		/// </summary>
 		/// <remarks>
 		/// Compares two mailbox addresses to determine if they are identical or not.
@@ -547,12 +535,9 @@ namespace MimeKit {
 		/// <see cref="MailboxAddress"/>; otherwise, <c>false</c>.</returns>
 		public override bool Equals (InternetAddress other)
 		{
-			var mailbox = other as MailboxAddress;
-
-			if (mailbox == null)
-				return false;
-
-			return Name == mailbox.Name && Address == mailbox.Address;
+			return other is MailboxAddress mailbox
+				&& Name == mailbox.Name
+				&& Address == mailbox.Address;
 		}
 
 		#endregion
@@ -565,12 +550,11 @@ namespace MimeKit {
 		internal static bool TryParse (ParserOptions options, byte[] text, ref int index, int endIndex, bool throwOnError, out MailboxAddress mailbox)
 		{
 			var flags = AddressParserFlags.AllowMailboxAddress;
-			InternetAddress address;
 
 			if (throwOnError)
 				flags |= AddressParserFlags.ThrowOnError;
 
-			if (!TryParse (options, text, ref index, endIndex, 0, flags, out address)) {
+			if (!InternetAddress.TryParse (flags, options, text, ref index, endIndex, 0, out var address)) {
 				mailbox = null;
 				return false;
 			}
@@ -772,10 +756,10 @@ namespace MimeKit {
 		/// </exception>
 		public static bool TryParse (ParserOptions options, string text, out MailboxAddress mailbox)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (text == null)
+			if (text is null)
 				throw new ArgumentNullException (nameof (text));
 
 			var buffer = Encoding.UTF8.GetBytes (text);
@@ -840,11 +824,9 @@ namespace MimeKit {
 			ParseUtils.ValidateArguments (options, buffer, startIndex, length);
 
 			int endIndex = startIndex + length;
-			MailboxAddress mailbox;
 			int index = startIndex;
 
-			if (!TryParse (options, buffer, ref index, endIndex, true, out mailbox))
-				throw new ParseException ("No mailbox address found.", startIndex, startIndex);
+			TryParse (options, buffer, ref index, endIndex, true, out var mailbox);
 
 			ParseUtils.SkipCommentsAndWhiteSpace (buffer, ref index, endIndex, true);
 
@@ -907,11 +889,9 @@ namespace MimeKit {
 			ParseUtils.ValidateArguments (options, buffer, startIndex);
 
 			int endIndex = buffer.Length;
-			MailboxAddress mailbox;
 			int index = startIndex;
 
-			if (!TryParse (options, buffer, ref index, endIndex, true, out mailbox))
-				throw new ParseException ("No mailbox address found.", startIndex, startIndex);
+			TryParse (options, buffer, ref index, endIndex, true, out var mailbox);
 
 			ParseUtils.SkipCommentsAndWhiteSpace (buffer, ref index, endIndex, true);
 
@@ -968,11 +948,9 @@ namespace MimeKit {
 			ParseUtils.ValidateArguments (options, buffer);
 
 			int endIndex = buffer.Length;
-			MailboxAddress mailbox;
 			int index = 0;
 
-			if (!TryParse (options, buffer, ref index, endIndex, true, out mailbox))
-				throw new ParseException ("No mailbox address found.", 0, 0);
+			TryParse (options, buffer, ref index, endIndex, true, out var mailbox);
 
 			ParseUtils.SkipCommentsAndWhiteSpace (buffer, ref index, endIndex, true);
 
@@ -1022,19 +1000,17 @@ namespace MimeKit {
 		/// </exception>
 		public static new MailboxAddress Parse (ParserOptions options, string text)
 		{
-			if (options == null)
+			if (options is null)
 				throw new ArgumentNullException (nameof (options));
 
-			if (text == null)
+			if (text is null)
 				throw new ArgumentNullException (nameof (text));
 
 			var buffer = Encoding.UTF8.GetBytes (text);
 			int endIndex = buffer.Length;
-			MailboxAddress mailbox;
 			int index = 0;
 
-			if (!TryParse (options, buffer, ref index, endIndex, true, out mailbox))
-				throw new ParseException ("No mailbox address found.", 0, 0);
+			TryParse (options, buffer, ref index, endIndex, true, out var mailbox);
 
 			ParseUtils.SkipCommentsAndWhiteSpace (buffer, ref index, endIndex, true);
 

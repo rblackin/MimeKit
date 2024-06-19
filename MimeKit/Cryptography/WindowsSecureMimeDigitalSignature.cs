@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 Xamarin Inc. (www.xamarin.com)
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -25,6 +25,7 @@
 //
 
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Security.Cryptography.Pkcs;
 
@@ -33,8 +34,7 @@ using Org.BouncyCastle.Asn1;
 using CmsAttributes = Org.BouncyCastle.Asn1.Cms.CmsAttributes;
 using SmimeAttributes = Org.BouncyCastle.Asn1.Smime.SmimeAttributes;
 
-namespace MimeKit.Cryptography
-{
+namespace MimeKit.Cryptography {
 	/// <summary>
 	/// An S/MIME digital signature.
 	/// </summary>
@@ -63,24 +63,20 @@ namespace MimeKit.Cryptography
 			SignerInfo = signerInfo;
 
 			var algorithms = new List<EncryptionAlgorithm> ();
-			DigestAlgorithm digestAlgo;
 
 			if (signerInfo.SignedAttributes != null) {
 				for (int i = 0; i < signerInfo.SignedAttributes.Count; i++) {
 					if (signerInfo.SignedAttributes[i].Oid.Value == CmsAttributes.SigningTime.Id) {
-						var signingTime = signerInfo.SignedAttributes[i].Values[0] as Pkcs9SigningTime;
-
-						if (signingTime != null)
+						if (signerInfo.SignedAttributes[i].Values[0] is Pkcs9SigningTime signingTime)
 							CreationDate = signingTime.SigningTime;
 					} else if (signerInfo.SignedAttributes[i].Oid.Value == SmimeAttributes.SmimeCapabilities.Id) {
 						foreach (var value in signerInfo.SignedAttributes[i].Values) {
 							var sequences = (DerSequence) Asn1Object.FromByteArray (value.RawData);
 
-							foreach (Asn1Sequence sequence in sequences) {
+							foreach (var sequence in sequences.OfType<Asn1Sequence> ()) {
 								var identifier = Org.BouncyCastle.Asn1.X509.AlgorithmIdentifier.GetInstance (sequence);
-								EncryptionAlgorithm algorithm;
 
-								if (BouncyCastleSecureMimeContext.TryGetEncryptionAlgorithm (identifier, out algorithm))
+								if (BouncyCastleSecureMimeContext.TryGetEncryptionAlgorithm (identifier, out var algorithm))
 									algorithms.Add (algorithm);
 							}
 						}
@@ -90,10 +86,11 @@ namespace MimeKit.Cryptography
 
 			EncryptionAlgorithms = algorithms.ToArray ();
 
-			if (WindowsSecureMimeContext.TryGetDigestAlgorithm (signerInfo.DigestAlgorithm, out digestAlgo))
+			if (WindowsSecureMimeContext.TryGetDigestAlgorithm (signerInfo.DigestAlgorithm, out var digestAlgo))
 				DigestAlgorithm = digestAlgo;
 
-			SignerCertificate = new WindowsSecureMimeDigitalCertificate (signerInfo.Certificate);
+			if (signerInfo.Certificate != null)
+				SignerCertificate = new WindowsSecureMimeDigitalCertificate (signerInfo.Certificate);
 		}
 
 		/// <summary>

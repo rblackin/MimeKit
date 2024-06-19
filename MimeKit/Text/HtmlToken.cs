@@ -3,7 +3,7 @@
 //
 // Author: Jeffrey Stedfast <jestedfa@microsoft.com>
 //
-// Copyright (c) 2013-2020 .NET Foundation and Contributors
+// Copyright (c) 2013-2024 .NET Foundation and Contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -73,7 +73,7 @@ namespace MimeKit.Text {
 		public abstract void WriteTo (TextWriter output);
 
 		/// <summary>
-		/// Returns a <see cref="System.String"/> that represents the current <see cref="HtmlToken"/>.
+		/// Return a <see cref="System.String"/> that represents the current <see cref="HtmlToken"/>.
 		/// </summary>
 		/// <remarks>
 		/// Returns a <see cref="System.String"/> that represents the current <see cref="HtmlToken"/>.
@@ -110,7 +110,7 @@ namespace MimeKit.Text {
 		/// </exception>
 		public HtmlCommentToken (string comment, bool bogus = false) : base (HtmlTokenKind.Comment)
 		{
-			if (comment == null)
+			if (comment is null)
 				throw new ArgumentNullException (nameof (comment));
 
 			IsBogusComment = bogus;
@@ -155,7 +155,7 @@ namespace MimeKit.Text {
 		/// </exception>
 		public override void WriteTo (TextWriter output)
 		{
-			if (output == null)
+			if (output is null)
 				throw new ArgumentNullException (nameof (output));
 
 			if (!IsBogusComment) {
@@ -204,7 +204,7 @@ namespace MimeKit.Text {
 				break;
 			}
 
-			if (data == null)
+			if (data is null)
 				throw new ArgumentNullException (nameof (data));
 
 			Data = data;
@@ -222,7 +222,7 @@ namespace MimeKit.Text {
 		/// </exception>
 		public HtmlDataToken (string data) : base (HtmlTokenKind.Data)
 		{
-			if (data == null)
+			if (data is null)
 				throw new ArgumentNullException (nameof (data));
 
 			Data = data;
@@ -256,7 +256,7 @@ namespace MimeKit.Text {
 		/// </exception>
 		public override void WriteTo (TextWriter output)
 		{
-			if (output == null)
+			if (output is null)
 				throw new ArgumentNullException (nameof (output));
 
 			if (!EncodeEntities) {
@@ -303,7 +303,7 @@ namespace MimeKit.Text {
 		/// </exception>
 		public override void WriteTo (TextWriter output)
 		{
-			if (output == null)
+			if (output is null)
 				throw new ArgumentNullException (nameof (output));
 
 			output.Write ("<![CDATA[");
@@ -347,7 +347,7 @@ namespace MimeKit.Text {
 		/// </exception>
 		public override void WriteTo (TextWriter output)
 		{
-			if (output == null)
+			if (output is null)
 				throw new ArgumentNullException (nameof (output));
 
 			output.Write (Data);
@@ -362,6 +362,8 @@ namespace MimeKit.Text {
 	/// </remarks>
 	public class HtmlTagToken : HtmlToken
 	{
+		HtmlTagId id = (HtmlTagId) (-1);
+
 		/// <summary>
 		/// Initialize a new instance of the <see cref="HtmlTagToken"/> class.
 		/// </summary>
@@ -378,15 +380,14 @@ namespace MimeKit.Text {
 		/// </exception>
 		public HtmlTagToken (string name, IEnumerable<HtmlAttribute> attributes, bool isEmptyElement) : base (HtmlTokenKind.Tag)
 		{
-			if (name == null)
+			if (name is null)
 				throw new ArgumentNullException (nameof (name));
 
-			if (attributes == null)
+			if (attributes is null)
 				throw new ArgumentNullException (nameof (attributes));
 
 			Attributes = new HtmlAttributeCollection (attributes);
 			IsEmptyElement = isEmptyElement;
-			Id = name.ToHtmlTagId ();
 			Name = name;
 		}
 
@@ -403,11 +404,10 @@ namespace MimeKit.Text {
 		/// </exception>
 		public HtmlTagToken (string name, bool isEndTag) : base (HtmlTokenKind.Tag)
 		{
-			if (name == null)
+			if (name is null)
 				throw new ArgumentNullException (nameof (name));
 
 			Attributes = new HtmlAttributeCollection ();
-			Id = name.ToHtmlTagId ();
 			IsEndTag = isEndTag;
 			Name = name;
 		}
@@ -431,7 +431,12 @@ namespace MimeKit.Text {
 		/// </remarks>
 		/// <value>The HTML tag identifier.</value>
 		public HtmlTagId Id {
-			get; private set;
+			get {
+				if (id == (HtmlTagId) (-1))
+					id = Name.ToHtmlTagId ();
+
+				return id;
+			}
 		}
 
 		/// <summary>
@@ -479,7 +484,7 @@ namespace MimeKit.Text {
 		/// </exception>
 		public override void WriteTo (TextWriter output)
 		{
-			if (output == null)
+			if (output is null)
 				throw new ArgumentNullException (nameof (output));
 
 			output.Write ('<');
@@ -560,7 +565,7 @@ namespace MimeKit.Text {
 			set {
 				publicIdentifier = value;
 				if (value != null) {
-					if (PublicKeyword == null)
+					if (PublicKeyword is null)
 						PublicKeyword = "PUBLIC";
 				} else {
 					if (systemIdentifier != null)
@@ -592,7 +597,7 @@ namespace MimeKit.Text {
 			set {
 				systemIdentifier = value;
 				if (value != null) {
-					if (publicIdentifier == null && SystemKeyword == null)
+					if (publicIdentifier is null && SystemKeyword is null)
 						SystemKeyword = "SYSTEM";
 				} else {
 					SystemKeyword = null;
@@ -623,7 +628,7 @@ namespace MimeKit.Text {
 		/// </exception>
 		public override void WriteTo (TextWriter output)
 		{
-			if (output == null)
+			if (output is null)
 				throw new ArgumentNullException (nameof (output));
 
 			output.Write ("<!");
